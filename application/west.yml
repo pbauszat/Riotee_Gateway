@@ -1,0 +1,22 @@
+manifest:
+  version: 0.9
+ 
+  defaults:
+    remote: zephyrproject
+  remotes:
+    - name: zephyrproject
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    - name: zephyr
+      repo-path: zephyr
+      revision: v3.3.0
+      path: zephyr
+      import:
+        name-allowlist:
+          - cmsis
+          - hal_nordic
+          - segger
+
+  self:
+    path: application
