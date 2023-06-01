@@ -88,14 +88,72 @@ static void interrupt_handler(const struct device *dev, void *user_data) {
   }
 }
 
-static void process_uart_pkt(char *pkt, size_t n) {
-  LOG_INF("Detected a packet with length %u", n);
+static inline int a2b_byte(char c) {
+  /* '0' should map to 0 */
+  if ((c <= 0x39) && (c >= 0x30))
+    return c - 0x30;
+  /* 'A' should map to 10 */
+  else if ((c >= 0x41) && (c <= 0x46))
+    return c - 0x37;
+  else
+    return -1;
+}
+
+static inline uint32_t ascii2bin(uint32_t *res, char *s, size_t n_bytes) {
+  int res_byte;
+  *res = 0;
+  for (unsigned int i = 0; i < (n_bytes * 2); i++) {
+    if ((res_byte = a2b_byte(s[n_bytes * 2 - 1 - i])) < 0)
+      return res_byte;
+    *res += res_byte << (i * 4);
+  }
+  return 0;
+}
+
+static int process_uart_pkt(pkt_t *dst, char *pkt_str, size_t n) {
+  uint32_t tmp;
+
+  /* Valid packet descriptor is at least 19 characters */
+  if (n < 19)
+    return -1;
+
+  /* Check for separators */
+  if (pkt_str[8] != ':')
+    return -1;
+
+  if (pkt_str[13] != ':')
+    return -1;
+
+  if (pkt_str[18] != ':')
+    return -1;
+
+  if (ascii2bin(&tmp, pkt_str, 4) < 0)
+    return -1;
+
+  dst->dev_id = tmp;
+
+  if (ascii2bin(&tmp, pkt_str + 9, 2) < 0)
+    return -1;
+  dst->pkt_id = (uint16_t)tmp;
+
+  if (ascii2bin(&tmp, pkt_str + 14, 2) < 0)
+    return -1;
+  dst->acknowledgement_id = (uint16_t)tmp;
+
+  unsigned int len_payload_char = n - 19;
+
+  for (unsigned int i = 0; i < len_payload_char; i++) {
+    if (ascii2bin(&tmp, pkt_str + 19, 1) < 0)
+      return -1;
+    dst->data[i] = (uint8_t)tmp;
+  }
+  dst->len = 8 + (len_payload_char / 2);
+  return 0;
 }
 
 void cdcacm_handler(void) {
   const struct device *dev;
 
-  uint32_t baudrate, dtr = 0U;
   int ret;
 
   ret = usb_enable(NULL);
@@ -111,42 +169,6 @@ void cdcacm_handler(void) {
     return;
   }
 
-#if 0
-  LOG_INF("Wait for DTR");
-
-  while (true) {
-    uart_line_ctrl_get(dev, UART_LINE_CTRL_DTR, &dtr);
-    if (dtr) {
-      break;
-    } else {
-      /* Give CPU resources to low priority threads. */
-      k_sleep(K_MSEC(100));
-    }
-  }
-
-  LOG_INF("DTR set");
-
-  /* They are optional, we use them to test the interrupt endpoint */
-  ret = uart_line_ctrl_set(dev, UART_LINE_CTRL_DCD, 1);
-  if (ret) {
-    LOG_WRN("Failed to set DCD, ret code %d", ret);
-  }
-
-  ret = uart_line_ctrl_set(dev, UART_LINE_CTRL_DSR, 1);
-  if (ret) {
-    LOG_WRN("Failed to set DSR, ret code %d", ret);
-  }
-
-  /* Wait 100ms for the host to do all settings */
-  k_msleep(100);
-
-  ret = uart_line_ctrl_get(dev, UART_LINE_CTRL_BAUD_RATE, &baudrate);
-  if (ret) {
-    LOG_WRN("Failed to get baudrate, ret code %d", ret);
-  } else {
-    LOG_INF("Baudrate detected: %d", baudrate);
-  }
-#endif
   uart_irq_callback_set(dev, interrupt_handler);
 
   /* Enable rx interrupts */
@@ -155,37 +177,44 @@ void cdcacm_handler(void) {
   if (!ring_buf_is_empty(&cdcacm_ringbuf_tx))
     uart_irq_tx_enable(dev);
 
-  char rcv_buffer[1024];
+  char pkt_string_buf[1024];
   unsigned int n_copied;
-  char *rcv_buf_ptr;
+  char *ring_buf_slice;
   uint32_t rb_size;
+  pkt_t pkt_buf;
+  int rc;
 
-  int rcv_buffer_idx = -1;
+  /* This means that no start of a packet has been found */
+  int pkt_string_buf_idx = -1;
 
   while (1) {
-    if ((rb_size = ring_buf_get_claim(&cdcacm_ringbuf_rx, (uint8_t **)&rcv_buf_ptr, 64)) == 0)
+    if ((rb_size = ring_buf_get_claim(&cdcacm_ringbuf_rx, (uint8_t **)&ring_buf_slice, 64)) == 0)
       k_event_wait(&uart_rx_evt, 0xFFFFFFFF, true, K_FOREVER);
 
     for (n_copied = 0; n_copied < rb_size; n_copied++) {
       /* If we have not detected the start of a packet */
-      if (rcv_buffer_idx < 0) {
+      if (pkt_string_buf_idx < 0) {
         /* Check if this is the start of a packet*/
-        if (rcv_buf_ptr[n_copied] == '[') {
-          rcv_buffer_idx = 0;
+        if (ring_buf_slice[n_copied] == '[') {
+          pkt_string_buf_idx = 0;
           LOG_INF("Start of packet detected");
         }
         continue;
       }
 
       /* Is this the end of a packet? */
-      if (rcv_buf_ptr[n_copied] == ']') {
-        process_uart_pkt(rcv_buffer, rcv_buffer_idx);
-        rcv_buffer_idx = -1;
+      if (ring_buf_slice[n_copied] == ']') {
+        if ((rc = process_uart_pkt(&pkt_buf, pkt_string_buf, pkt_string_buf_idx)) >= 0)
+          LOG_DBG("Processed packet with %08X:%04X:%04X and %u byte payload", pkt_buf.dev_id, pkt_buf.pkt_id,
+                  pkt_buf.acknowledgement_id, pkt_buf.len);
+        else
+          LOG_ERR("Processing failed with %d", rc);
+        pkt_string_buf_idx = -1;
       } else {
-        rcv_buffer[rcv_buffer_idx++] = rcv_buf_ptr[n_copied];
-        if (rcv_buffer_idx == sizeof(rcv_buffer)) {
+        pkt_string_buf[pkt_string_buf_idx++] = ring_buf_slice[n_copied];
+        if (pkt_string_buf_idx == sizeof(pkt_string_buf)) {
           LOG_ERR("Buffer is full, no packet detected");
-          rcv_buffer_idx = -1;
+          pkt_string_buf_idx = -1;
           break;
         }
       }
@@ -223,15 +252,16 @@ void printer_handler() {
       continue;
     }
 
-    int n = sprintf(pkt_descriptor, ":%08X:%04X:%04X:", pkt_buf.dev_id, pkt_buf.pkt_id, pkt_buf.acknowledgement_id);
+    int n = sprintf(pkt_descriptor, "[%08X:%04X:%04X:", pkt_buf.dev_id, pkt_buf.pkt_id, pkt_buf.acknowledgement_id);
 
+    /* Iterate the payload and convert binary to ascii hex bytewise */
     uint16_t *ptr = (uint16_t *)(pkt_descriptor + n);
     for (unsigned int i = 0; i < pkt_buf.len - 8; i++) {
       *ptr++ = hex_lut[pkt_buf.data[i]];
     }
 
     n += 2 * (pkt_buf.len - 8);
-    n += sprintf(pkt_descriptor + n, ":\r\n");
+    n += sprintf(pkt_descriptor + n, "]\r\n");
 
     if (ring_buf_space_get(&cdcacm_ringbuf_tx) >= (pkt_buf.len + 1)) {
       ring_buf_put(&cdcacm_ringbuf_tx, pkt_descriptor, n);
