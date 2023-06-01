@@ -17,8 +17,11 @@ typedef struct {
 } msg_t;
 
 int msg_buf_init(void);
-int msg_buf_insert(uint32_t dev_id, msg_t *msg);
+int msg_buf_insert(pkt_t *pkt);
 
-int msg_buf_get(msg_header_t *hdr_dst, uint8_t *data_dst, uint32_t dev_id);
+/* Get a pointer to a packet for the device from the message buffer */
+int msg_buf_get_claim(pkt_t **dst, uint32_t dev_id);
+/* Let message buffer know that the packet was processed */
+int msg_buf_get_finish(uint32_t dev_id);
 
 #endif /* __MESSAGE_BUFFER_H_ */

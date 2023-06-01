@@ -13,6 +13,8 @@ typedef struct __attribute__((packed)) {
   uint8_t data[247];
 } pkt_t;
 
-extern struct k_msgq pkt_mq;
+int radio_msgq_get(pkt_t* pkt, k_timeout_t timeout);
+
+extern uint32_t my_dev_id;
 
 #endif /* __RADIO_H_ */
