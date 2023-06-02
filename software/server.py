@@ -6,8 +6,7 @@ import uvicorn
 from packet_model import Packet
 import logging
 from queue import Queue
-
-logging.basicConfig(level=logging.DEBUG)
+import click
 
 
 class PacketDatabase(object):
@@ -153,5 +152,28 @@ async def startup_event():
     asyncio.create_task(transceiver_loop())
 
 
+@click.option("-v", "--verbose", count=True, default=2)
+@click.option(
+    "-d",
+    "--device",
+    type=str,
+    help="Serial device of gateway transceiver",
+)
+@click.option("-p", "--port", type=int, default=8000, help="Port for API server")
+@click.option("-h", "--host", type=str, default="0.0.0.0", help="Host for API server")
+@click.command
+def cli(host, port, device, verbose):
+    if verbose == 0:
+        logging.basicConfig(level=logging.ERROR)
+    elif verbose == 1:
+        logging.basicConfig(level=logging.WARNING)
+    elif verbose == 2:
+        logging.basicConfig(level=logging.INFO)
+    elif verbose > 2:
+        logging.basicConfig(level=logging.DEBUG)
+
+    uvicorn.run("server:app", port=port, host=host)
+
+
 if __name__ == "__main__":
-    uvicorn.run("server:app")
+    cli()
