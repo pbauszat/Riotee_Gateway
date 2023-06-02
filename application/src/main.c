@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <zephyr/device.h>
+#include <zephyr/sys/base64.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/kernel.h>
@@ -49,9 +50,10 @@ static void interrupt_handler(const struct device *dev, void *user_data) {
       uint8_t overflow_buffer[64];
       uint8_t *ring_buf_slice;
 
+      /* Claim some space on the ringbuffer */
       uint32_t rb_size = ring_buf_put_claim(&cdcacm_ringbuf_rx, &ring_buf_slice, 64);
-      if (rb_size == 64) {
-        recv_len = uart_fifo_read(dev, ring_buf_slice, 64);
+      if (rb_size > 0) {
+        recv_len = uart_fifo_read(dev, ring_buf_slice, rb_size);
         ring_buf_put_finish(&cdcacm_ringbuf_rx, recv_len);
         k_event_set(&uart_rx_evt, 0xFFFFFFFF);
 
@@ -88,66 +90,41 @@ static void interrupt_handler(const struct device *dev, void *user_data) {
   }
 }
 
-static inline int a2b_byte(char c) {
-  /* '0' should map to 0 */
-  if ((c <= 0x39) && (c >= 0x30))
-    return c - 0x30;
-  /* 'A' should map to 10 */
-  else if ((c >= 0x41) && (c <= 0x46))
-    return c - 0x37;
-  else
-    return -1;
-}
-
-static inline uint32_t ascii2bin(uint32_t *res, char *s, size_t n_bytes) {
-  int res_byte;
-  *res = 0;
-  for (unsigned int i = 0; i < (n_bytes * 2); i++) {
-    if ((res_byte = a2b_byte(s[n_bytes * 2 - 1 - i])) < 0)
-      return res_byte;
-    *res += res_byte << (i * 4);
-  }
-  return 0;
-}
-
 static int process_uart_pkt(pkt_t *dst, char *pkt_str, size_t n) {
-  uint32_t tmp;
+  size_t n_written;
+  unsigned int i = 0, j = 0;
 
-  /* Valid packet descriptor is at least 19 characters */
-  if (n < 19)
-    return -1;
-
-  /* Check for separators */
-  if (pkt_str[8] != ':')
-    return -1;
-
-  if (pkt_str[13] != ':')
-    return -1;
-
-  if (pkt_str[18] != ':')
-    return -1;
-
-  if (ascii2bin(&tmp, pkt_str, 4) < 0)
-    return -1;
-
-  dst->dev_id = tmp;
-
-  if (ascii2bin(&tmp, pkt_str + 9, 2) < 0)
-    return -1;
-  dst->pkt_id = (uint16_t)tmp;
-
-  if (ascii2bin(&tmp, pkt_str + 14, 2) < 0)
-    return -1;
-  dst->acknowledgement_id = (uint16_t)tmp;
-
-  unsigned int len_payload_char = n - 19;
-
-  for (unsigned int i = 0; i < len_payload_char; i++) {
-    if (ascii2bin(&tmp, pkt_str + 19, 1) < 0)
+  while (pkt_str[i] != ':') {
+    if (++i == n)
       return -1;
-    dst->data[i] = (uint8_t)tmp;
   }
-  dst->len = 8 + (len_payload_char / 2);
+
+  if (base64_decode((uint8_t *)&dst->dev_id, 4, &n_written, pkt_str, i - j) < 0)
+    return -1;
+  j = ++i;
+
+  while (pkt_str[i] != ':') {
+    if (++i == n)
+      return -1;
+  }
+
+  if (base64_decode((uint8_t *)&dst->pkt_id, 2, &n_written, pkt_str, i - j) < 0)
+    return -1;
+  j = ++i;
+
+  while (pkt_str[i] != ':') {
+    if (++i == n)
+      return -1;
+  }
+
+  if (base64_decode((uint8_t *)&dst->acknowledgement_id, 2, &n_written, pkt_str, i - j) < 0)
+    return -1;
+  i++;
+
+  if (base64_decode((uint8_t *)&dst->data, PKT_PAYLOAD_SIZE, &n_written, pkt_str, n - i) < 0)
+    return -1;
+
+  dst->len = 8 + n_written;
   return 0;
 }
 
@@ -192,7 +169,7 @@ void cdcacm_handler(void) {
       k_event_wait(&uart_rx_evt, 0xFFFFFFFF, true, K_FOREVER);
 
     for (n_copied = 0; n_copied < rb_size; n_copied++) {
-      /* If we have not detected the start of a packet */
+      /* If we have not detected the start of a packet yet */
       if (pkt_string_buf_idx < 0) {
         /* Check if this is the start of a packet*/
         if (ring_buf_slice[n_copied] == '[') {
@@ -228,18 +205,12 @@ void printer_handler() {
   const struct device *dev;
 
   char pkt_descriptor[1024];
-  uint16_t hex_lut[256];
 
   pkt_t pkt_buf;
   dev = DEVICE_DT_GET_ONE(zephyr_cdc_acm_uart);
   if (!device_is_ready(dev)) {
     LOG_ERR("CDC ACM device not ready");
     return;
-  }
-
-  /* Prepare lookup table for rapid conversion to ASCII Hex */
-  for (unsigned int i = 0; i < 256; i++) {
-    sprintf((char *)&hex_lut[i], "%02X", i);
   }
 
   while (1) {
@@ -252,24 +223,30 @@ void printer_handler() {
       continue;
     }
 
-    int n = sprintf(pkt_descriptor, "[%08X:%04X:%04X:", pkt_buf.dev_id, pkt_buf.pkt_id, pkt_buf.acknowledgement_id);
+    size_t olen;
+    size_t n_written = 0;
+    pkt_descriptor[n_written++] = '[';
 
-    /* Iterate the payload and convert binary to ascii hex bytewise */
-    uint16_t *ptr = (uint16_t *)(pkt_descriptor + n);
-    for (unsigned int i = 0; i < pkt_buf.len - 8; i++) {
-      *ptr++ = hex_lut[pkt_buf.data[i]];
-    }
+    base64_encode(pkt_descriptor + n_written, sizeof(pkt_descriptor), &olen, (uint8_t *)&pkt_buf.dev_id, 4);
+    /* Make sure to also leave the trailing \0 in the string as a delimiter*/
+    n_written += olen + 1;
+    base64_encode(pkt_descriptor + n_written, sizeof(pkt_descriptor) - n_written, &olen, (uint8_t *)&pkt_buf.pkt_id, 2);
+    n_written += olen + 1;
+    base64_encode(pkt_descriptor + n_written, sizeof(pkt_descriptor) - n_written, &olen,
+                  (uint8_t *)&pkt_buf.acknowledgement_id, 2);
+    n_written += olen + 1;
+    base64_encode(pkt_descriptor + n_written, sizeof(pkt_descriptor) - n_written, &olen, (uint8_t *)&pkt_buf.data,
+                  pkt_buf.len - 8);
+    n_written += olen + 1;
+    pkt_descriptor[n_written++] = ']';
 
-    n += 2 * (pkt_buf.len - 8);
-    n += sprintf(pkt_descriptor + n, "]\r\n");
-
-    if (ring_buf_space_get(&cdcacm_ringbuf_tx) >= (pkt_buf.len + 1)) {
-      ring_buf_put(&cdcacm_ringbuf_tx, pkt_descriptor, n);
+    if (ring_buf_space_get(&cdcacm_ringbuf_tx) >= n_written) {
+      ring_buf_put(&cdcacm_ringbuf_tx, pkt_descriptor, n_written);
       uart_irq_tx_enable(dev);
     } else
       LOG_DBG("Dropped packet descriptor");
 
-    LOG_DBG("%s", pkt_descriptor);
+    LOG_DBG("[%08X:%04X:%04X(%u)]", pkt_buf.dev_id, pkt_buf.pkt_id, pkt_buf.acknowledgement_id, pkt_buf.len);
   }
 }
 
