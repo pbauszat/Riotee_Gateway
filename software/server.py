@@ -71,6 +71,7 @@ class Transceiver(object):
 
     def send_packet(self, pkt: Packet):
         self.__ser.write(pkt.to_uart())
+        logging.debug(pkt.to_uart())
 
     async def read_packet(self, pkt_buf=bytes()):
         """Searches the bytestring pkt_buf for a valid packet descriptor."""
@@ -110,15 +111,16 @@ class Transceiver(object):
 
 async def transceiver_loop():
     remaining_buf = bytes()
-    with Transceiver() as tcv:
-        while True:
-            pkt_buf, remaining_buf = await tcv.read_packet(remaining_buf)
-            pkt = Packet.from_uart(pkt_buf)
-            pkt.timestamp = datetime.now()
-            db.add_packet(pkt)
-            logging.debug(f"Got packet from {pkt.dev_id} with ID {pkt.pkt_id}")
+
+    while True:
+        pkt_buf, remaining_buf = await tcv.read_packet(remaining_buf)
+        pkt = Packet.from_uart(pkt_buf)
+        pkt.timestamp = datetime.now()
+        db.add_packet(pkt)
+        logging.debug(f"Got packet from {pkt.dev_id} with ID {pkt.pkt_id}")
 
 
+tcv = Transceiver()
 db = PacketDatabase()
 app = FastAPI()
 
@@ -145,13 +147,19 @@ async def get_packet(device_id: str):
 
 @app.post("/out")
 async def post_packet(packet: Packet):
-    db.add_packet(packet)
+    tcv.send_packet(packet)
     return packet
 
 
 @app.on_event("startup")
 async def startup_event():
+    tcv.__enter__()
     asyncio.create_task(transceiver_loop())
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    tcv.__exit__()
 
 
 @click.option("-v", "--verbose", count=True, default=2)

@@ -14,8 +14,8 @@
 #include "radio.h"
 
 #define RING_BUF_SIZE 2048
-#define PRINTER_STACK_SIZE 8192
-#define CDCACM_STACK_SIZE 4096
+#define PRINTER_STACK_SIZE 2048
+#define CDCACM_STACK_SIZE 2048
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
@@ -33,26 +33,19 @@ static void interrupt_handler(const struct device *dev, void *user_data) {
   while (uart_irq_update(dev) && uart_irq_is_pending(dev)) {
     if (uart_irq_rx_ready(dev)) {
       int recv_len;
-      uint8_t overflow_buffer[64];
-      uint8_t *ring_buf_slice;
+      uint8_t buffer[64];
 
       /* Claim some space on the ringbuffer */
-      uint32_t rb_size = ring_buf_put_claim(&cdcacm_ringbuf_rx, &ring_buf_slice, 64);
-      if (rb_size > 0) {
-        recv_len = uart_fifo_read(dev, ring_buf_slice, rb_size);
-        ring_buf_put_finish(&cdcacm_ringbuf_rx, recv_len);
-        k_event_set(&uart_rx_evt, 0xFFFFFFFF);
-
-        /* If we can't allocate space on the ringbuffer, drop the UART data */
-      } else {
-        recv_len = uart_fifo_read(dev, overflow_buffer, 64);
-        ring_buf_put_finish(&cdcacm_ringbuf_rx, 0);
-        LOG_ERR("CDC Uart ringbuffer overflow");
-      }
-
+      recv_len = uart_fifo_read(dev, buffer, sizeof(buffer));
       if (recv_len < 0) {
         LOG_ERR("Failed to read UART FIFO");
+        continue;
       }
+      uint32_t written = ring_buf_put(&cdcacm_ringbuf_rx, buffer, recv_len);
+      if (written > 0)
+        k_event_set(&uart_rx_evt, 0xFFFFFFFF);
+      else
+        LOG_ERR("UART ringbuffer full");
     }
 
     if (uart_irq_tx_ready(dev)) {
@@ -76,46 +69,107 @@ static void interrupt_handler(const struct device *dev, void *user_data) {
   }
 }
 
-static int process_uart_pkt(pkt_t *dst, char *pkt_str, size_t n) {
+static int process_pkt_string(pkt_t *dst, char *pkt_str, size_t pkt_str_len) {
   size_t n_written;
-  unsigned int i = 0, j = 0;
+  size_t n;
+  char *s = pkt_str;
 
-  while (pkt_str[i] != '\0') {
-    if (++i == n)
-      return -1;
-  }
-
-  if (base64_decode((uint8_t *)&dst->hdr.dev_id, 4, &n_written, pkt_str, i - j) < 0)
+  if ((n = strlen(s)) != 8)
     return -1;
-  j = ++i;
 
-  while (pkt_str[i] != '\0') {
-    if (++i == n)
-      return -1;
-  }
-
-  if (base64_decode((uint8_t *)&dst->hdr.pkt_id, 2, &n_written, pkt_str, i - j) < 0)
+  if (base64_decode((uint8_t *)&dst->hdr.dev_id, 4, &n_written, s, n) < 0)
     return -1;
-  j = ++i;
 
-  while (pkt_str[i] != '\0') {
-    if (++i == n)
-      return -1;
-  }
-
-  if (base64_decode((uint8_t *)&dst->hdr.ack_id, 2, &n_written, pkt_str, i - j) < 0)
+  s += n + 1;
+  if ((n = strlen(s)) != 4)
     return -1;
-  i++;
 
-  if (base64_decode((uint8_t *)&dst->data, PKT_PAYLOAD_SIZE, &n_written, pkt_str, n - i) < 0)
+  if (base64_decode((uint8_t *)&dst->hdr.pkt_id, 2, &n_written, s, n) < 0)
+    return -1;
+
+  s += n + 1;
+  if ((n = strlen(s)) != 4)
+    return -1;
+
+  if (base64_decode((uint8_t *)&dst->hdr.ack_id, 2, &n_written, s, n) < 0)
+    return -1;
+
+  s += n + 1;
+  if ((s - pkt_str) > pkt_str_len)
+    return -1;
+  n = strlen(s);
+
+  if (base64_decode((uint8_t *)&dst->data, PKT_PAYLOAD_SIZE, &n_written, s, n) < 0)
     return -1;
 
   dst->len = sizeof(pkt_header_t) + n_written;
   return 0;
 }
 
-void cdcacm_handler(void) {
+static inline uint32_t ring_buf_get_wait(uint8_t **buf_slice_p) {
+  uint32_t rb_size;
+  while ((rb_size = ring_buf_get_claim(&cdcacm_ringbuf_rx, buf_slice_p, 64)) == 0)
+    k_event_wait(&uart_rx_evt, 0xFFFFFFFF, true, K_FOREVER);
+
+  return rb_size;
+}
+
+/* Loads data from cdc acm, buffer by buffer, to extract a packet descriptor */
+static int find_in_ring(char *dst, size_t buf_size) {
+  bool found = false;
+  uint8_t *buf_slice_p;
+  unsigned int i;
+  do {
+    /* Get a slice from the ringbuf */
+    int rb_size = ring_buf_get_wait(&buf_slice_p);
+    for (i = 0; i < rb_size; i++) {
+      /* We're looking for an opening bracket */
+      if (buf_slice_p[i] == '[') {
+        found = true;
+        break;
+      }
+    }
+    /* Let the ringbuffer know that we're done with our slice*/
+    ring_buf_get_finish(&cdcacm_ringbuf_rx, i);
+  } while (!found);
+
+  /* Drop the opening bracket at the start of the packet */
+  while (ring_buf_get(&cdcacm_ringbuf_rx, NULL, 1) == 0)
+    k_event_wait(&uart_rx_evt, 0xFFFFFFFF, true, K_FOREVER);
+
+  /* Now start the search for the closing bracket */
+  found = false;
+  int written = 0;
+  do {
+    int rb_size = ring_buf_get_wait(&buf_slice_p);
+    for (i = 0; i < rb_size; i++) {
+      /* Another opening bracket indicates that something is wrong */
+      if (buf_slice_p[i] == '[') {
+        ring_buf_get_finish(&cdcacm_ringbuf_rx, 0);
+        return -1;
+      }
+      if (buf_slice_p[i] == ']') {
+        found = true;
+        break;
+      }
+    }
+    /* Check if buffer would overflow */
+    if ((written + i) > buf_size) {
+      ring_buf_get_finish(&cdcacm_ringbuf_rx, 0);
+      LOG_ERR("Packet string buffer overflow");
+      return -1;
+    }
+    memcpy(dst + written, buf_slice_p, i);
+    written += i;
+    ring_buf_get_finish(&cdcacm_ringbuf_rx, i);
+
+  } while (!found);
+  return written;
+}
+
+int cdcacm_init(void) {
   const struct device *dev;
+  uint32_t dtr;
 
   int ret;
 
@@ -123,14 +177,27 @@ void cdcacm_handler(void) {
 
   if (ret != 0) {
     LOG_ERR("Failed to enable USB");
-    return;
+    return -1;
   }
 
   dev = DEVICE_DT_GET_ONE(zephyr_cdc_acm_uart);
   if (!device_is_ready(dev)) {
     LOG_ERR("CDC ACM device not ready");
-    return;
+    return -1;
   }
+
+  LOG_INF("Wait for DTR");
+
+  while (true) {
+    uart_line_ctrl_get(dev, UART_LINE_CTRL_DTR, &dtr);
+    if (dtr) {
+      break;
+    } else {
+      k_msleep(10);
+    }
+  }
+
+  LOG_INF("DTR set");
 
   uart_irq_callback_set(dev, interrupt_handler);
 
@@ -139,59 +206,34 @@ void cdcacm_handler(void) {
 
   if (!ring_buf_is_empty(&cdcacm_ringbuf_tx))
     uart_irq_tx_enable(dev);
+  return 0;
+}
 
-  char pkt_string_buf[1024];
-  unsigned int n_copied;
-  char *ring_buf_slice;
-  uint32_t rb_size;
-  pkt_t pkt_buf;
+/* Receives incoming data stream from cdc acm, extracts packets and processes the result */
+void cdcacm_handler(void) {
+  static char pkt_string_buf[512];
+
+  pkt_t pkt;
   int rc;
-
-  /* This means that no start of a packet has been found */
-  int pkt_string_buf_idx = -1;
-
   while (1) {
-    if ((rb_size = ring_buf_get_claim(&cdcacm_ringbuf_rx, (uint8_t **)&ring_buf_slice, 64)) == 0)
-      k_event_wait(&uart_rx_evt, 0xFFFFFFFF, true, K_FOREVER);
-
-    for (n_copied = 0; n_copied < rb_size; n_copied++) {
-      /* If we have not detected the start of a packet yet */
-      if (pkt_string_buf_idx < 0) {
-        /* Check if this is the start of a packet*/
-        if (ring_buf_slice[n_copied] == '[') {
-          pkt_string_buf_idx = 0;
-          LOG_INF("Start of packet detected");
-        }
-        continue;
-      }
-
-      /* Is this the end of a packet? */
-      if (ring_buf_slice[n_copied] == ']') {
-        if ((rc = process_uart_pkt(&pkt_buf, pkt_string_buf, pkt_string_buf_idx)) >= 0)
-          LOG_DBG("Processed packet with %08X:%04X:%04X and %u byte payload", pkt_buf.hdr.dev_id, pkt_buf.hdr.pkt_id,
-                  pkt_buf.hdr.ack_id, pkt_buf.len);
-        else
-          LOG_ERR("Processing failed with %d", rc);
-        pkt_string_buf_idx = -1;
-      } else {
-        pkt_string_buf[pkt_string_buf_idx++] = ring_buf_slice[n_copied];
-        if (pkt_string_buf_idx == sizeof(pkt_string_buf)) {
-          LOG_ERR("Buffer is full, no packet detected");
-          pkt_string_buf_idx = -1;
-          break;
-        }
-      }
+    int pkt_str_len = find_in_ring(pkt_string_buf, sizeof(pkt_string_buf));
+    if (pkt_str_len < 0) {
+      LOG_ERR("Error finding packet in uart stream");
+      continue;
     }
 
-    ring_buf_get_finish(&cdcacm_ringbuf_rx, n_copied);
+    if ((rc = process_pkt_string(&pkt, pkt_string_buf, pkt_str_len)) < 0) {
+      LOG_ERR("Error processing packet: %d", rc);
+      continue;
+    }
+    LOG_INF("Packet processed: %08X, %04X, %04X", pkt.hdr.dev_id, pkt.hdr.pkt_id, pkt.hdr.ack_id);
   }
 }
 
+/* Receives packets from the radio packet queue, generates a base64 based string and hands it over to the CDC ACM*/
 void printer_handler() {
-  /* Receives packets from the radio packet queue, generates a base64 based string and hands it over to the CDC ACM*/
   const struct device *dev;
-
-  char pkt_descriptor[1024];
+  static char pkt_descriptor[512];
 
   pkt_t pkt_buf;
   dev = DEVICE_DT_GET_ONE(zephyr_cdc_acm_uart);
@@ -223,7 +265,7 @@ void printer_handler() {
                   2);
     n_written += olen + 1;
     base64_encode(pkt_descriptor + n_written, sizeof(pkt_descriptor) - n_written, &olen, (uint8_t *)&pkt_buf.data,
-                  pkt_buf.len - 8);
+                  pkt_buf.len - sizeof(pkt_header_t));
     n_written += olen + 1;
     pkt_descriptor[n_written++] = ']';
 
@@ -250,6 +292,8 @@ void main(void) {
   if (ret < 0) {
     return;
   }
+
+  cdcacm_init();
 
   radio_init();
   radio_start();

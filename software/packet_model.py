@@ -1,5 +1,11 @@
 from pydantic import BaseModel
 from datetime import datetime
+import numpy as np
+import base64
+
+
+class Item(BaseModel):
+    myval: int
 
 
 class Packet(BaseModel):
@@ -38,6 +44,25 @@ class Packet(BaseModel):
             data=data,
         )
 
+    @classmethod
+    def from_binary(cls, dev_id: int, pkt_id: int, data: bytes = None):
+        """Populates class from binary values."""
+        dev_id_enc = str(base64.urlsafe_b64encode(np.uint32(dev_id)), "utf-8")
+        pkt_id_enc = str(base64.urlsafe_b64encode(np.uint16(pkt_id)), "utf-8")
+        if data is not None:
+            data_enc = str(base64.urlsafe_b64encode(data), "utf-8")
+        else:
+            data_enc = None
+
+        return cls(dev_id=dev_id_enc, pkt_id=pkt_id_enc, data=data_enc)
+
     def to_uart(self):
+        if self.ack_id is None:
+            ack_id_str = str(base64.urlsafe_b64encode(np.uint16(0)), "utf-8")
+        else:
+            ack_id_str = self.ack_id
+
+        data_str = self.data if self.data is not None else ""
+
         """Returns a string ready to be sent to the gateway transceiver."""
-        return f"[{self.dev_id}\0{self.pkt_id}\0{self.ack_id}\0{self.data}\0]"
+        return bytes(f"[{self.dev_id}\0{self.pkt_id}\0{ack_id_str}\0{data_str}\0]", encoding="utf-8")
