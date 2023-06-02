@@ -4,6 +4,7 @@ AllowShortFunctionsOnASingleLine: Empty
 ColumnLimit: '120'
 IncludeBlocks: Preserve
 AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: 'false'
 SortIncludes: 'false'
 
 ...
