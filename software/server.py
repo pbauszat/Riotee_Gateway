@@ -7,7 +7,7 @@ from packet_model import Packet
 import logging
 from queue import Queue
 
-logging.basicConfig(level=logging.WARN)
+logging.basicConfig(level=logging.DEBUG)
 
 
 class PacketDatabase(object):
@@ -115,6 +115,7 @@ async def transceiver_loop():
             pkt_buf, remaining_buf = await tcv.read_packet(remaining_buf)
             pkt = Packet.from_uart(pkt_buf)
             db.add_packet(pkt)
+            logging.debug(f"Got packet from {pkt.dev_id} with ID {pkt.pkt_id}")
 
 
 db = PacketDatabase()

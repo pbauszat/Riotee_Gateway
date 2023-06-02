@@ -1,4 +1,5 @@
 #include <zephyr/sys/ring_buffer.h>
+#include <zephyr/device.h>
 
 #include "message_buffer.h"
 #include "radio.h"
@@ -14,6 +15,7 @@ typedef struct {
 } dev_msg_buf_t;
 
 dev_msg_buf_t buffers[MAX_NUM_DEVICES];
+static uint32_t my_dev_id;
 
 #define msg_buf_used(idx) (buffers[idx].dev_id != my_dev_id)
 #define msg_buf_set_unused(dev_msg_buf_ptr) dev_msg_buf_ptr->dev_id = my_dev_id
@@ -36,6 +38,8 @@ static inline dev_msg_buf_t *get_empty_msg_buf() {
 }
 
 int msg_buf_init(void) {
+  my_dev_id = NRF_FICR->DEVICEID[0];
+
   for (unsigned int i = 0; i < MAX_NUM_DEVICES; i++) {
     ring_buf_init(&buffers[i].msg_buf, PKTS_PER_BUF * sizeof(pkt_t), buffers[i].msg_buf_data);
     /* Set to own ID to indicate that this slot is not used */
@@ -48,17 +52,17 @@ int msg_buf_insert(pkt_t *pkt) {
   dev_msg_buf_t *dev_msg_buf;
 
   /* Search for a buffer that is already in use for this device id */
-  if ((dev_msg_buf = get_dev_msg_buf(pkt->dev_id)) == NULL) {
+  if ((dev_msg_buf = get_dev_msg_buf(pkt->hdr.dev_id)) == NULL) {
     /* No buffer in use? Get a new one. */
     if ((dev_msg_buf = get_empty_msg_buf()) == NULL)
       /* All buffers used*/
       return -1;
     /* Claim the empty buffer for this device id */
-    dev_msg_buf->dev_id = pkt->dev_id;
+    dev_msg_buf->dev_id = pkt->hdr.dev_id;
   }
 
   /* Insert own device ID as sender into the packet */
-  pkt->dev_id = my_dev_id;
+  pkt->hdr.dev_id = my_dev_id;
 
   ring_buf_put(&dev_msg_buf->msg_buf, (uint8_t *)pkt, sizeof(pkt_t));
   return 0;

@@ -1,17 +1,3 @@
-/*
- * Copyright (c) 2019 Intel Corporation
- *
- * SPDX-License-Identifier: Apache-2.0
- */
-
-/**
- * @file
- * @brief Sample echo app for CDC ACM class
- *
- * Sample app for USB CDC ACM class driver. The received data is echoed back
- * to the serial port.
- */
-
 #include <stdio.h>
 #include <string.h>
 #include <zephyr/device.h>
@@ -94,37 +80,37 @@ static int process_uart_pkt(pkt_t *dst, char *pkt_str, size_t n) {
   size_t n_written;
   unsigned int i = 0, j = 0;
 
-  while (pkt_str[i] != ':') {
+  while (pkt_str[i] != '\0') {
     if (++i == n)
       return -1;
   }
 
-  if (base64_decode((uint8_t *)&dst->dev_id, 4, &n_written, pkt_str, i - j) < 0)
+  if (base64_decode((uint8_t *)&dst->hdr.dev_id, 4, &n_written, pkt_str, i - j) < 0)
     return -1;
   j = ++i;
 
-  while (pkt_str[i] != ':') {
+  while (pkt_str[i] != '\0') {
     if (++i == n)
       return -1;
   }
 
-  if (base64_decode((uint8_t *)&dst->pkt_id, 2, &n_written, pkt_str, i - j) < 0)
+  if (base64_decode((uint8_t *)&dst->hdr.pkt_id, 2, &n_written, pkt_str, i - j) < 0)
     return -1;
   j = ++i;
 
-  while (pkt_str[i] != ':') {
+  while (pkt_str[i] != '\0') {
     if (++i == n)
       return -1;
   }
 
-  if (base64_decode((uint8_t *)&dst->acknowledgement_id, 2, &n_written, pkt_str, i - j) < 0)
+  if (base64_decode((uint8_t *)&dst->hdr.ack_id, 2, &n_written, pkt_str, i - j) < 0)
     return -1;
   i++;
 
   if (base64_decode((uint8_t *)&dst->data, PKT_PAYLOAD_SIZE, &n_written, pkt_str, n - i) < 0)
     return -1;
 
-  dst->len = 8 + n_written;
+  dst->len = sizeof(pkt_header_t) + n_written;
   return 0;
 }
 
@@ -182,8 +168,8 @@ void cdcacm_handler(void) {
       /* Is this the end of a packet? */
       if (ring_buf_slice[n_copied] == ']') {
         if ((rc = process_uart_pkt(&pkt_buf, pkt_string_buf, pkt_string_buf_idx)) >= 0)
-          LOG_DBG("Processed packet with %08X:%04X:%04X and %u byte payload", pkt_buf.dev_id, pkt_buf.pkt_id,
-                  pkt_buf.acknowledgement_id, pkt_buf.len);
+          LOG_DBG("Processed packet with %08X:%04X:%04X and %u byte payload", pkt_buf.hdr.dev_id, pkt_buf.hdr.pkt_id,
+                  pkt_buf.hdr.ack_id, pkt_buf.len);
         else
           LOG_ERR("Processing failed with %d", rc);
         pkt_string_buf_idx = -1;
@@ -202,6 +188,7 @@ void cdcacm_handler(void) {
 }
 
 void printer_handler() {
+  /* Receives packets from the radio packet queue, generates a base64 based string and hands it over to the CDC ACM*/
   const struct device *dev;
 
   char pkt_descriptor[1024];
@@ -218,22 +205,22 @@ void printer_handler() {
     radio_msgq_get(&pkt_buf, K_FOREVER);
 
     if ((pkt_buf.len > (sizeof(pkt_t) - 1) || (pkt_buf.len < 8))) {
-      /* Something is wrong with this packet! */
       LOG_ERR("Received packet with wrong size");
       continue;
     }
 
     size_t olen;
     size_t n_written = 0;
-    pkt_descriptor[n_written++] = '[';
 
-    base64_encode(pkt_descriptor + n_written, sizeof(pkt_descriptor), &olen, (uint8_t *)&pkt_buf.dev_id, 4);
-    /* Make sure to also leave the trailing \0 in the string as a delimiter*/
+    pkt_descriptor[n_written++] = '[';
+    base64_encode(pkt_descriptor + n_written, sizeof(pkt_descriptor), &olen, (uint8_t *)&pkt_buf.hdr.dev_id, 4);
+    /* Make sure to also include the trailing \0 in the string as a delimiter*/
     n_written += olen + 1;
-    base64_encode(pkt_descriptor + n_written, sizeof(pkt_descriptor) - n_written, &olen, (uint8_t *)&pkt_buf.pkt_id, 2);
+    base64_encode(pkt_descriptor + n_written, sizeof(pkt_descriptor) - n_written, &olen, (uint8_t *)&pkt_buf.hdr.pkt_id,
+                  2);
     n_written += olen + 1;
-    base64_encode(pkt_descriptor + n_written, sizeof(pkt_descriptor) - n_written, &olen,
-                  (uint8_t *)&pkt_buf.acknowledgement_id, 2);
+    base64_encode(pkt_descriptor + n_written, sizeof(pkt_descriptor) - n_written, &olen, (uint8_t *)&pkt_buf.hdr.ack_id,
+                  2);
     n_written += olen + 1;
     base64_encode(pkt_descriptor + n_written, sizeof(pkt_descriptor) - n_written, &olen, (uint8_t *)&pkt_buf.data,
                   pkt_buf.len - 8);
@@ -246,7 +233,7 @@ void printer_handler() {
     } else
       LOG_DBG("Dropped packet descriptor");
 
-    LOG_DBG("[%08X:%04X:%04X(%u)]", pkt_buf.dev_id, pkt_buf.pkt_id, pkt_buf.acknowledgement_id, pkt_buf.len);
+    LOG_DBG("[%08X:%04X:%04X(%u)]", pkt_buf.hdr.dev_id, pkt_buf.hdr.pkt_id, pkt_buf.hdr.ack_id, pkt_buf.len);
   }
 }
 

@@ -4,7 +4,7 @@ from pydantic import BaseModel
 class Packet(BaseModel):
     pkt_id: str
     dev_id: str
-    acknowledgement_id: str | None
+    ack_id: str | None
     data: str | None
 
     @staticmethod
@@ -24,7 +24,7 @@ class Packet(BaseModel):
         pkt_id, term_idx = cls.base64_to_ascii(pkt_str)
         pkt_str = pkt_str[term_idx + 1 :]
 
-        acknowledgement_id, term_idx = cls.base64_to_ascii(pkt_str)
+        ack_id, term_idx = cls.base64_to_ascii(pkt_str)
         pkt_str = pkt_str[term_idx + 1 :]
 
         data, term_idx = cls.base64_to_ascii(pkt_str)
@@ -32,12 +32,10 @@ class Packet(BaseModel):
         return cls(
             dev_id=dev_id,
             pkt_id=pkt_id,
-            acknowledgement_id=acknowledgement_id,
+            ack_id=ack_id,
             data=data,
         )
 
     def to_uart(self):
         """Returns a string ready to be sent to the gateway transceiver."""
-        return (
-            f"[{self.dev_id}\0{self.pkt_id}\0{self.acknowledgement_id}\0{self.data}\0]"
-        )
+        return f"[{self.dev_id}\0{self.pkt_id}\0{self.ack_id}\0{self.data}\0]"

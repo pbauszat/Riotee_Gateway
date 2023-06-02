@@ -20,6 +20,9 @@
  * Adapted for Zephyr by Carles Cufi (carles.cufi@nordicsemi.no)
  *  - Removed mbedtls_ prefixes
  *  - Reworked coding style
+ *
+ * Adapted for Riotee Gateway project by Kai Geissdoerfer
+ *  - Replaced + and / with - and _ to make strings URL safe
  */
 
 #include <stdint.h>

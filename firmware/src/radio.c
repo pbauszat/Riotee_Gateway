@@ -18,9 +18,6 @@ K_MSGQ_DEFINE(pkt_mq, sizeof(pkt_t), PKT_MQ_CAPACITY, 4);
 K_THREAD_STACK_DEFINE(radio_thread_stack, RADIO_STACK_SIZE);
 struct k_thread radio_thread_data;
 
-/* Stores the device ID of the gateway */
-uint32_t my_dev_id;
-
 /* DMA buffer for incoming radio packets */
 static pkt_t rx_pkt;
 
@@ -96,13 +93,9 @@ int radio_init() {
   IRQ_DIRECT_CONNECT(RADIO_IRQn, 0, radio_isr, 0);
   irq_enable(RADIO_IRQn);
 
-  /* Device ID of the gateway */
-  my_dev_id = NRF_FICR->DEVICEID[0];
-
   /* Prepare empty acknowledgement packet */
-  ack_only_pkt.len = 8;
-  ack_only_pkt.pkt_id = 0xFFFF;
-  ack_only_pkt.dev_id = my_dev_id;
+  ack_only_pkt.len = sizeof(pkt_header_t);
+  ack_only_pkt.hdr.pkt_id = 0xFFFF;
 
   return 0;
 }
@@ -145,15 +138,18 @@ static void radio_isr(void) {
 
     pkt_t* tx_pkt;
     /* Get a packet that is to be sent to the device from which we just received something */
-    if (msg_buf_get_claim(&tx_pkt, rx_pkt.dev_id) == 0)
+    if (msg_buf_get_claim(&tx_pkt, rx_pkt.hdr.dev_id) == 0)
       /* Let the application know that we have claimed a buffer */
       k_event_post(&radio_evt, RADIO_EVT_CLAIM);
-    else
+    else {
       /* If there is no packet pending, send an empty acknowledgement */
       tx_pkt = &ack_only_pkt;
+      /* Acknowledgements always have the same device ID as the acknowledged packet */
+      tx_pkt->hdr.dev_id = rx_pkt.hdr.dev_id;
+    }
 
     /* Insert Packet ID of received packet into acknowledgement */
-    tx_pkt->acknowledgement_id = rx_pkt.pkt_id;
+    tx_pkt->hdr.ack_id = rx_pkt.hdr.pkt_id;
 
     NRF_RADIO->PACKETPTR = (uint32_t)tx_pkt;
 
@@ -194,7 +190,7 @@ static void radio_handler() {
     /* If the acknowledgement packet has been taken from the message buffer*/
     if (events & RADIO_EVT_CLAIM)
       /* Tell the buffer that we're done with the packet */
-      msg_buf_get_finish(tmp_buf.dev_id);
+      msg_buf_get_finish(tmp_buf.hdr.dev_id);
 
     /* Send last received packet to application for processing */
     k_msgq_put(&pkt_mq, &tmp_buf, K_NO_WAIT);
