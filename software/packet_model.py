@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from datetime import datetime
 
 
 class Packet(BaseModel):
@@ -6,6 +7,7 @@ class Packet(BaseModel):
     dev_id: str
     ack_id: str | None
     data: str | None
+    timestamp: datetime | None
 
     @staticmethod
     def base64_to_ascii(pkt_str: bytes):
