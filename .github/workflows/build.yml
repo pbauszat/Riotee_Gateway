@@ -21,12 +21,12 @@ jobs:
       run: /opt/toolchains/zephyr-sdk-*/setup.sh -t all -h -c
 
     - name: Download zephyr
-      run: west init -l application && west update
+      run: west init -l firmware && west update
 
     - run: source zephyr/zephyr-env.sh
   
-    - name: Build application
-      run: west build application
+    - name: Build firmware
+      run: west build firmware
 
     - name: Upload artifacts to github
       uses: actions/upload-artifact@v3
