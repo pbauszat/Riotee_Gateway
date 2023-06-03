@@ -69,7 +69,7 @@ static void interrupt_handler(const struct device *dev, void *user_data) {
   }
 }
 
-static int process_pkt_string(pkt_t *dst, char *pkt_str, size_t pkt_str_len) {
+static int string2packet(pkt_t *dst, char *pkt_str, size_t pkt_str_len) {
   size_t n_written;
   size_t n;
   char *s = pkt_str;
@@ -85,13 +85,6 @@ static int process_pkt_string(pkt_t *dst, char *pkt_str, size_t pkt_str_len) {
     return -1;
 
   if (base64_decode((uint8_t *)&dst->hdr.pkt_id, 2, &n_written, s, n) < 0)
-    return -1;
-
-  s += n + 1;
-  if ((n = strlen(s)) != 4)
-    return -1;
-
-  if (base64_decode((uint8_t *)&dst->hdr.ack_id, 2, &n_written, s, n) < 0)
     return -1;
 
   s += n + 1;
@@ -222,12 +215,30 @@ void cdcacm_handler(void) {
       continue;
     }
 
-    if ((rc = process_pkt_string(&pkt, pkt_string_buf, pkt_str_len)) < 0) {
+    if ((rc = string2packet(&pkt, pkt_string_buf, pkt_str_len)) < 0) {
       LOG_ERR("Error processing packet: %d", rc);
       continue;
     }
-    LOG_INF("Packet processed: %08X, %04X, %04X", pkt.hdr.dev_id, pkt.hdr.pkt_id, pkt.hdr.ack_id);
+    LOG_INF("Packet processed: %08X, %04X", pkt.hdr.dev_id, pkt.hdr.pkt_id);
   }
+}
+
+size_t packet2string(char *dst, size_t dst_size, pkt_t *pkt) {
+  size_t olen;
+  size_t n_written = 0;
+
+  dst[n_written++] = '[';
+  base64_encode(dst + n_written, dst_size, &olen, (uint8_t *)&pkt->hdr.dev_id, 4);
+  /* Make sure to also include the trailing \0 in the string as a delimiter*/
+  n_written += olen + 1;
+  base64_encode(dst + n_written, dst_size - n_written, &olen, (uint8_t *)&pkt->hdr.pkt_id, 2);
+  n_written += olen + 1;
+  base64_encode(dst + n_written, dst_size - n_written, &olen, (uint8_t *)&pkt->hdr.ack_id, 2);
+  n_written += olen + 1;
+  base64_encode(dst + n_written, dst_size - n_written, &olen, (uint8_t *)&pkt->data, pkt->len - sizeof(pkt_header_t));
+  n_written += olen + 1;
+  dst[n_written++] = ']';
+  return n_written;
 }
 
 /* Receives packets from the radio packet queue, generates a base64 based string and hands it over to the CDC ACM*/
@@ -251,29 +262,12 @@ void printer_handler() {
       continue;
     }
 
-    size_t olen;
-    size_t n_written = 0;
-
-    pkt_descriptor[n_written++] = '[';
-    base64_encode(pkt_descriptor + n_written, sizeof(pkt_descriptor), &olen, (uint8_t *)&pkt_buf.hdr.dev_id, 4);
-    /* Make sure to also include the trailing \0 in the string as a delimiter*/
-    n_written += olen + 1;
-    base64_encode(pkt_descriptor + n_written, sizeof(pkt_descriptor) - n_written, &olen, (uint8_t *)&pkt_buf.hdr.pkt_id,
-                  2);
-    n_written += olen + 1;
-    base64_encode(pkt_descriptor + n_written, sizeof(pkt_descriptor) - n_written, &olen, (uint8_t *)&pkt_buf.hdr.ack_id,
-                  2);
-    n_written += olen + 1;
-    base64_encode(pkt_descriptor + n_written, sizeof(pkt_descriptor) - n_written, &olen, (uint8_t *)&pkt_buf.data,
-                  pkt_buf.len - sizeof(pkt_header_t));
-    n_written += olen + 1;
-    pkt_descriptor[n_written++] = ']';
-
-    if (ring_buf_space_get(&cdcacm_ringbuf_tx) >= n_written) {
-      ring_buf_put(&cdcacm_ringbuf_tx, pkt_descriptor, n_written);
+    size_t n = packet2string(pkt_descriptor, sizeof(pkt_descriptor), &pkt_buf);
+    if (ring_buf_space_get(&cdcacm_ringbuf_tx) >= n) {
+      ring_buf_put(&cdcacm_ringbuf_tx, pkt_descriptor, n);
       uart_irq_tx_enable(dev);
     } else
-      LOG_DBG("Dropped packet descriptor");
+      LOG_DBG("Ringbuf full. Dropping packet descriptor.");
 
     LOG_DBG("[%08X:%04X:%04X(%u)]", pkt_buf.hdr.dev_id, pkt_buf.hdr.pkt_id, pkt_buf.hdr.ack_id, pkt_buf.len);
   }

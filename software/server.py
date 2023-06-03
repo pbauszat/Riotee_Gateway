@@ -3,11 +3,12 @@ from serial import Serial
 import asyncio
 from fastapi import FastAPI
 import uvicorn
-from packet_model import Packet
+from packet_model import *
 import logging
 from queue import Queue
 import click
 from datetime import datetime
+import serial_asyncio
 
 
 class PacketDatabase(object):
@@ -16,15 +17,21 @@ class PacketDatabase(object):
     def __init__(self) -> None:
         self.__db = dict()
 
-    def add_packet(self, pkt: Packet):
+    def add_packet(self, pkt: PacketApiReceive):
         try:
             self.__db[pkt.dev_id].put(pkt)
         except KeyError:
             self.__db[pkt.dev_id] = Queue(1024)
-            self.__db[pkt.dev_id].put(pkt)
+            self.__db[pkt.dev_id].put_nowait(pkt)
 
     def get_packet(self, dev_id):
-        return self.__db[dev_id].get()
+        return self.__db[dev_id].get_nowait()
+
+    def get_packets(self, dev_id):
+        packets = list()
+        while self.get_queue_size() > 0:
+            packets.append(self.get_packet())
+        return packets
 
     def get_devices(self):
         return list(self.__db.keys())
@@ -55,69 +62,35 @@ class Transceiver(object):
         else:
             raise Exception(f"Found multiple potential devices at {' and '.join(hits)}")
 
-    def __init__(self, port=None) -> None:
+    def __init__(self, port: str = None, baudrate: int = 1000000):
         self.__port = port
-        self.__ser = None
+        self.__baudrate = baudrate
 
-    def __enter__(self):
+    async def __enter__(self):
         if self.__port is None:
             self.__port = Transceiver.find_serial_port()
 
-        self.__ser = Serial(self.__port, 1000000, timeout=0)
+        self.__reader, self.__writer = await serial_asyncio.open_serial_connection(url=self.__port, baudrate=self.__baudrate)
         return self
 
     def __exit__(self, *args):
-        self.__ser.close()
+        pass
 
-    def send_packet(self, pkt: Packet):
-        self.__ser.write(pkt.to_uart())
+    async def read_packet(self):
+        await self.__reader.readuntil(b"[")
+        pkt_str = await self.__reader.readuntil(b"]")
+        return pkt_str
+
+    def send_packet(self, pkt: PacketTransceiver):
+        self.__writer.write(pkt.to_uart())
         logging.debug(pkt.to_uart())
 
-    async def read_packet(self, pkt_buf=bytes()):
-        """Searches the bytestring pkt_buf for a valid packet descriptor."""
-        last_idx = 0
+    async def run(self, db):
         while True:
-            pkt_snippet_start_idx = pkt_buf[last_idx:].find(b"[")
-            if pkt_snippet_start_idx >= 0:
-                break
-            # We don't need to search the part up to last_idx again
-            last_idx = len(pkt_buf)
-            # Try to get more data from the transceiver
-            while True:
-                pkt_buf += self.__ser.read_all()
-                if len(pkt_buf) > last_idx:
-                    break
-                await asyncio.sleep(0.001)
-
-        pkt_start_idx = last_idx + pkt_snippet_start_idx
-
-        last_idx = 0
-        pkt_buf = pkt_buf[pkt_start_idx + 1 :]
-        while True:
-            pkt_snippet_end_idx = pkt_buf[last_idx:].find(b"]")
-            if pkt_snippet_end_idx >= 0:
-                break
-            last_idx = len(pkt_buf)
-            while True:
-                pkt_buf += self.__ser.read_all()
-                if len(pkt_buf) > last_idx:
-                    break
-                await asyncio.sleep(0.001)
-
-        pkt_end_idx = last_idx + pkt_snippet_end_idx
-        # Return the discovered descriptor and the remaining portion of the bytestring
-        return pkt_buf[:pkt_end_idx], pkt_buf[pkt_end_idx + 1 :]
-
-
-async def transceiver_loop():
-    remaining_buf = bytes()
-
-    while True:
-        pkt_buf, remaining_buf = await tcv.read_packet(remaining_buf)
-        pkt = Packet.from_uart(pkt_buf)
-        pkt.timestamp = datetime.now()
-        db.add_packet(pkt)
-        logging.debug(f"Got packet from {pkt.dev_id} with ID {pkt.pkt_id}")
+            pkt_str = await tcv.read_packet()
+            pkt = PacketApiReceive.from_uart(pkt_str, datetime.now())
+            db.add_packet(pkt)
+            logging.debug(f"Got packet from {pkt.dev_id} with ID {pkt.pkt_id} @{pkt.timestamp}")
 
 
 tcv = Transceiver()
@@ -130,9 +103,16 @@ async def get_root():
     return "Welcome to the Gateway!"
 
 
-@app.get("/devices")
+@app.get("/devices/list")
 async def get_devices():
     return db.get_devices()
+
+
+@app.get("/devices/all")
+async def get_devices():
+    packets = list()
+    for dev_id in db.get_devices():
+        packets += db.get_packets(dev_id)
 
 
 @app.get("/devices/{device_id}/size")
@@ -140,21 +120,28 @@ async def get_queue_size(device_id: str):
     return db.get_queue_size(device_id)
 
 
-@app.get("/devices/{device_id}")
+@app.get("/devices/{device_id}/pop")
 async def get_packet(device_id: str):
+    print(device_id)
     return db.get_packet(device_id)
 
 
-@app.post("/out")
-async def post_packet(packet: Packet):
-    tcv.send_packet(packet)
-    return packet
+@app.get("/devices/{device_id}/all")
+async def get_packet(device_id: str):
+    return db.get_packets(device_id)
+
+
+@app.post("/devices/{device_id}/send")
+async def post_packet(device_id: str, packet: PacketApiSend):
+    print("T", device_id)
+    pkt_tcv = PacketTransceiver.from_PacketApiSend(packet, device_id)
+    tcv.send_packet(pkt_tcv)
 
 
 @app.on_event("startup")
 async def startup_event():
-    tcv.__enter__()
-    asyncio.create_task(transceiver_loop())
+    await tcv.__enter__()
+    asyncio.create_task(tcv.run(db))
 
 
 @app.on_event("shutdown")
