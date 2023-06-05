@@ -2,8 +2,8 @@ import asyncio
 from fastapi import FastAPI
 import logging
 
-from packet_model import *
-from transceiver import Transceiver
+from riotee.packet_model import *
+from riotee.transceiver import Transceiver
 
 
 class PacketDatabase(object):

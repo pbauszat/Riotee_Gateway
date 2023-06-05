@@ -1,0 +1,24 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "riotee"
+authors = [{name = "Kai Geissdoerfer", email = "info@nessie-circuits.de"}]
+license = {file = "LICENSE"}
+classifiers = ["License :: OSI Approved :: MIT License"]
+dynamic = ["version", "description"]
+dependencies = [
+  'click',
+  'fastapi',
+  'requests',
+  'numpy',
+  'uvicorn',
+  'pyserial-asyncio'
+]
+
+[project.scripts]
+riotee-gateway = "riotee.cli:cli"
+
+[tool.black]
+line-length = 120

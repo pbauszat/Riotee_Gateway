@@ -1,9 +1,10 @@
 import serial_asyncio
 from serial.tools import list_ports
 from datetime import datetime
-from packet_model import PacketApiReceive
-from packet_model import PacketTransceiverSend
 import logging
+
+from riotee.packet_model import PacketApiReceive
+from riotee.packet_model import PacketTransceiverSend
 
 
 class Transceiver(object):

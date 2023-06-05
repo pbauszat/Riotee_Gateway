@@ -1,7 +1,8 @@
 import requests
-from packet_model import PacketApiSend
 import numpy as np
 import base64
+
+from riotee.packet_model import PacketApiSend
 
 
 def decode_dev_id(dev_id_b64: str):
