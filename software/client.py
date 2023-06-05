@@ -5,11 +5,11 @@ import base64
 
 
 def decode_dev_id(dev_id_b64: str):
-    return np.frombuffer(base64.urlsafe_b64decode(dev_id_b64), dtype=np.uint16)[0]
+    return np.frombuffer(base64.b64decode(dev_id_b64), dtype=np.uint16)[0]
 
 
 def encode_data(data):
-    return str(base64.urlsafe_b64encode(data), "utf-8")
+    return str(base64.b64encode(data), "utf-8")
 
 
 class GatewayConnection(object):
@@ -20,6 +20,8 @@ class GatewayConnection(object):
         """Automatically converts dev_id argument to base64"""
 
         def _convert_dev_id_wrapped(self, dev_id: int | str, *args):
+            if dev_id is None:
+                return fn_called(self, None, *args)
             if type(dev_id) is str:
                 return fn_called(self, dev_id, *args)
             dev_id_b64 = encode_data(np.uint32(dev_id))
@@ -29,12 +31,12 @@ class GatewayConnection(object):
 
     def get_devices(self):
         """Reads the list of all devices from which the gateway has received packets."""
-        r = requests.get(f"{self.__url}/devices/list")
+        r = requests.get(f"{self.__url}/devices")
         return r.json()
 
     @convert_dev_id
     def send_packet(self, dev_id: int | str, pkt: PacketApiSend):
-        r = requests.post(f"{self.__url}/devices/{dev_id}/send", data=pkt.json())
+        r = requests.post(f"{self.__url}/out/{dev_id}", data=pkt.json())
 
     @convert_dev_id
     def send_ascii(self, dev_id: int | str, text: str):
@@ -44,19 +46,47 @@ class GatewayConnection(object):
     @convert_dev_id
     def get_queue_size(self, dev_id: int | str):
         """Reads the number of packets in the queue for the corresponding device."""
-        r = requests.get(f"{self.__url}/devices/{dev_id}/size")
+        r = requests.get(f"{self.__url}/in/{dev_id}/size")
         return r.json()
 
     @convert_dev_id
-    def get_packet(self, dev_id: int | str):
+    def get_packet(self, dev_id: int | str, pkt_index: int):
         """Retrieves a packet from the gateways fifo queue."""
-        r = requests.get(f"{self.__url}/devices/{dev_id}/pop")
+        r = requests.get(f"{self.__url}/in/{dev_id}/{pkt_index}")
+        return r.json()
+
+    @convert_dev_id
+    def delete_packet(self, dev_id: int | str, pkt_index: int):
+        """Retrieves a packet from the gateways fifo queue."""
+        r = requests.delete(f"{self.__url}/in/{dev_id}/{pkt_index}")
         return r.json()
 
     @convert_dev_id
     def get_packets(self, dev_id: int | str = None):
         if dev_id is None:
-            r = requests.get(f"{self.__url}/all")
+            r = requests.get(f"{self.__url}/in/all/all")
         else:
-            r = requests.get(f"{self.__url}/devices/{dev_id}/all")
+            r = requests.get(f"{self.__url}/in/{dev_id}/all")
         return r.json()
+
+    @convert_dev_id
+    def delete_packets(self, dev_id: int | str = None):
+        if dev_id is None:
+            r = requests.delete(f"{self.__url}/in/all/all")
+        else:
+            r = requests.delete(f"{self.__url}/in/{dev_id}/all")
+        return r.json()
+
+
+if __name__ == "__main__":
+    pkt = PacketApiSend.from_binary(data=np.array([1, 2, 3, 4]).tobytes())
+
+    gateway = GatewayConnection()
+    devices = gateway.get_devices()
+    if devices:
+        print(devices)
+        pkts = gateway.get_packets(devices[0])
+        print(pkts)
+
+        gateway.send_packet(devices[0], pkt)
+        gateway.send_ascii(devices[0], "hello there!")

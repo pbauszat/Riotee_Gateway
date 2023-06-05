@@ -1,14 +1,11 @@
-from serial.tools import list_ports
-from serial import Serial
 import asyncio
 from fastapi import FastAPI
 import uvicorn
-from packet_model import *
 import logging
-from queue import Queue
 import click
-from datetime import datetime
-import serial_asyncio
+
+from packet_model import *
+from transceiver import Transceiver
 
 
 class PacketDatabase(object):
@@ -17,80 +14,24 @@ class PacketDatabase(object):
     def __init__(self) -> None:
         self.__db = dict()
 
-    def add_packet(self, pkt: PacketApiReceive):
+    def add(self, pkt: PacketApiReceive):
         try:
-            self.__db[pkt.dev_id].put(pkt)
+            self.__db[pkt.dev_id].append(pkt)
         except KeyError:
-            self.__db[pkt.dev_id] = Queue(1024)
-            self.__db[pkt.dev_id].put_nowait(pkt)
-
-    def get_packet(self, dev_id):
-        return self.__db[dev_id].get_nowait()
-
-    def get_packets(self, dev_id):
-        packets = list()
-        while self.get_queue_size() > 0:
-            packets.append(self.get_packet())
-        return packets
+            self.__db[pkt.dev_id] = [pkt]
 
     def get_devices(self):
         return list(self.__db.keys())
 
-    def get_queue_size(self, dev_id):
-        return self.__db[dev_id].qsize()
+    def __getitem__(self, dev_id):
+        return self.__db[dev_id]
 
 
-class Transceiver(object):
-    """Represents the nRF board that communicates with the devices wirelessly."""
-
-    USB_PID = 0xC8A2
-    USB_VID = 0x1209
-
-    @staticmethod
-    def find_serial_port() -> str:
-        """Finds the serial port name of an attached gateway dongle based on USB IDs."""
-        hits = list()
-        for port in list_ports.comports():
-            if port.vid == Transceiver.USB_VID and port.pid == Transceiver.USB_PID:
-                hits.append(port.device)
-
-        if not hits:
-            raise Exception("Couldn't find serial port of Riotee Gateway.")
-        elif len(hits) == 1:
-            logging.info(f"Found serial port at {hits[0]}")
-            return hits[0]
-        else:
-            raise Exception(f"Found multiple potential devices at {' and '.join(hits)}")
-
-    def __init__(self, port: str = None, baudrate: int = 1000000):
-        self.__port = port
-        self.__baudrate = baudrate
-
-    async def __enter__(self):
-        if self.__port is None:
-            self.__port = Transceiver.find_serial_port()
-
-        self.__reader, self.__writer = await serial_asyncio.open_serial_connection(url=self.__port, baudrate=self.__baudrate)
-        return self
-
-    def __exit__(self, *args):
-        pass
-
-    async def read_packet(self):
-        await self.__reader.readuntil(b"[")
-        pkt_str = await self.__reader.readuntil(b"]")
-        return pkt_str
-
-    def send_packet(self, pkt: PacketTransceiver):
-        self.__writer.write(pkt.to_uart())
-        logging.debug(pkt.to_uart())
-
-    async def run(self, db):
-        while True:
-            pkt_str = await tcv.read_packet()
-            pkt = PacketApiReceive.from_uart(pkt_str, datetime.now())
-            db.add_packet(pkt)
-            logging.debug(f"Got packet from {pkt.dev_id} with ID {pkt.pkt_id} @{pkt.timestamp}")
+async def receive_loop(tcv: Transceiver, db: PacketDatabase):
+    while True:
+        pkt = await tcv.read_packet()
+        db.add(pkt)
+        logging.debug(f"Got packet from {pkt.dev_id} with ID {pkt.pkt_id} @{pkt.timestamp}")
 
 
 tcv = Transceiver()
@@ -100,48 +41,73 @@ app = FastAPI()
 
 @app.get("/")
 async def get_root():
-    return "Welcome to the Gateway!"
+    return "Welcome to the Riotee Gateway!"
 
 
-@app.get("/devices/list")
+@app.get("/devices")
 async def get_devices():
     return db.get_devices()
 
 
-@app.get("/devices/all")
-async def get_devices():
-    packets = list()
+@app.get("/in/all/size")
+async def get_all_queue_size():
+    n_tot = 0
     for dev_id in db.get_devices():
-        packets += db.get_packets(dev_id)
+        n_tot += len(db[dev_id])
+    return n_tot
 
 
-@app.get("/devices/{device_id}/size")
-async def get_queue_size(device_id: str):
-    return db.get_queue_size(device_id)
+@app.get("/in/all/all")
+async def get_all_packets(dev_id: bytes):
+    pkts = list()
+    for dev_id in db.get_devices():
+        pkts += db[dev_id]
+    return pkts
 
 
-@app.get("/devices/{device_id}/pop")
-async def get_packet(device_id: str):
-    print(device_id)
-    return db.get_packet(device_id)
+@app.delete("/in/all/all")
+async def delete_all_packets(dev_id: bytes):
+    pkts = list()
+    for dev_id in db.get_devices():
+        db[dev_id] = list()
 
 
-@app.get("/devices/{device_id}/all")
-async def get_packet(device_id: str):
-    return db.get_packets(device_id)
+@app.get("/in/{dev_id}/size")
+async def get_queue_size(dev_id: bytes):
+    return len(db[dev_id])
 
 
-@app.post("/devices/{device_id}/send")
-async def post_packet(device_id: str, packet: PacketApiSend):
-    print("T", device_id)
-    pkt_tcv = PacketTransceiver.from_PacketApiSend(packet, device_id)
+@app.get("/in/{dev_id}/all")
+async def get_all_dev_packets(dev_id: bytes):
+    return db[dev_id]
+
+
+@app.delete("/in/{dev_id}/all")
+async def delete_all_devpackets(dev_id: bytes):
+    db[dev_id] = list()
+
+
+@app.get("/in/{dev_id}/{index}")
+async def get_packet(dev_id: bytes, index: int):
+    return db[dev_id][index]
+
+
+@app.delete("/in/{dev_id}/{index}")
+async def delete_packet(dev_id: bytes, index: int):
+    del db[dev_id][index]
+
+
+@app.post("/out/{dev_id}")
+async def post_packet(dev_id: bytes, packet: PacketApiSend):
+    pkt_tcv = PacketTransceiverSend.from_PacketApiSend(packet, dev_id)
     tcv.send_packet(pkt_tcv)
+    return packet
 
 
 @app.on_event("startup")
 async def startup_event():
     await tcv.__enter__()
-    asyncio.create_task(tcv.run(db))
+    asyncio.create_task(receive_loop(tcv, db))
 
 
 @app.on_event("shutdown")
