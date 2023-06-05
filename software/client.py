@@ -32,11 +32,13 @@ class GatewayConnection(object):
     def get_devices(self):
         """Reads the list of all devices from which the gateway has received packets."""
         r = requests.get(f"{self.__url}/devices")
+        r.raise_for_status()
         return r.json()
 
     @convert_dev_id
     def send_packet(self, dev_id: int | str, pkt: PacketApiSend):
         r = requests.post(f"{self.__url}/out/{dev_id}", data=pkt.json())
+        r.raise_for_status()
 
     @convert_dev_id
     def send_ascii(self, dev_id: int | str, text: str):
@@ -47,18 +49,21 @@ class GatewayConnection(object):
     def get_queue_size(self, dev_id: int | str):
         """Reads the number of packets in the queue for the corresponding device."""
         r = requests.get(f"{self.__url}/in/{dev_id}/size")
+        r.raise_for_status()
         return r.json()
 
     @convert_dev_id
     def get_packet(self, dev_id: int | str, pkt_index: int):
         """Retrieves a packet from the gateways fifo queue."""
         r = requests.get(f"{self.__url}/in/{dev_id}/{pkt_index}")
+        r.raise_for_status()
         return r.json()
 
     @convert_dev_id
     def delete_packet(self, dev_id: int | str, pkt_index: int):
         """Retrieves a packet from the gateways fifo queue."""
         r = requests.delete(f"{self.__url}/in/{dev_id}/{pkt_index}")
+        r.raise_for_status()
         return r.json()
 
     @convert_dev_id
@@ -67,6 +72,7 @@ class GatewayConnection(object):
             r = requests.get(f"{self.__url}/in/all/all")
         else:
             r = requests.get(f"{self.__url}/in/{dev_id}/all")
+        r.raise_for_status()
         return r.json()
 
     @convert_dev_id
@@ -75,18 +81,5 @@ class GatewayConnection(object):
             r = requests.delete(f"{self.__url}/in/all/all")
         else:
             r = requests.delete(f"{self.__url}/in/{dev_id}/all")
+        r.raise_for_status()
         return r.json()
-
-
-if __name__ == "__main__":
-    pkt = PacketApiSend.from_binary(data=np.array([1, 2, 3, 4]).tobytes())
-
-    gateway = GatewayConnection()
-    devices = gateway.get_devices()
-    if devices:
-        print(devices)
-        pkts = gateway.get_packets(devices[0])
-        print(pkts)
-
-        gateway.send_packet(devices[0], pkt)
-        gateway.send_ascii(devices[0], "hello there!")
