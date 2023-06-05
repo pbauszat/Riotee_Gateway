@@ -2,8 +2,8 @@ import asyncio
 from fastapi import FastAPI
 import logging
 
-from riotee.packet_model import *
-from riotee.transceiver import Transceiver
+from riotee_gateway.packet_model import *
+from riotee_gateway.transceiver import Transceiver
 
 
 class PacketDatabase(object):
@@ -29,7 +29,9 @@ async def receive_loop(tcv: Transceiver, db: PacketDatabase):
     while True:
         pkt = await tcv.read_packet()
         db.add(pkt)
-        logging.debug(f"Got packet from {pkt.dev_id} with ID {pkt.pkt_id} @{pkt.timestamp}")
+        logging.debug(
+            f"Got packet from {pkt.dev_id} with ID {pkt.pkt_id} @{pkt.timestamp}"
+        )
 
 
 tcv = Transceiver()

@@ -1,7 +1,7 @@
 import click
 import logging
 import uvicorn
-from riotee.client import GatewayConnection
+from riotee_gateway.client import GatewayClient
 
 
 @click.option("-v", "--verbose", count=True, default=2)
@@ -27,13 +27,13 @@ def cli(ctx, host, port, verbose):
 @click.pass_context
 def server(ctx):
     click.echo("Here to serve")
-    uvicorn.run("riotee.server:app", port=ctx.obj["port"], host=ctx.obj["host"])
+    uvicorn.run("riotee_gateway.server:app", port=ctx.obj["port"], host=ctx.obj["host"])
 
 
 @cli.group(short_help="client stuff")
 @click.pass_context
 def client(ctx):
-    ctx.obj["client"] = GatewayConnection(ctx.obj["host"], ctx.obj["port"])
+    ctx.obj["client"] = GatewayClient(ctx.obj["host"], ctx.obj["port"])
 
 
 @client.command(short_help="fetch packets from the server")

@@ -3,8 +3,8 @@ from serial.tools import list_ports
 from datetime import datetime
 import logging
 
-from riotee.packet_model import PacketApiReceive
-from riotee.packet_model import PacketTransceiverSend
+from riotee_gateway.packet_model import PacketApiReceive
+from riotee_gateway.packet_model import PacketTransceiverSend
 
 
 class Transceiver(object):
@@ -37,7 +37,9 @@ class Transceiver(object):
         if self.__port is None:
             self.__port = Transceiver.find_serial_port()
 
-        self.__reader, self.__writer = await serial_asyncio.open_serial_connection(url=self.__port, baudrate=self.__baudrate)
+        self.__reader, self.__writer = await serial_asyncio.open_serial_connection(
+            url=self.__port, baudrate=self.__baudrate
+        )
         return self
 
     def __exit__(self, *args):

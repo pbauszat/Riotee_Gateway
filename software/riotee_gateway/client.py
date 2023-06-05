@@ -2,7 +2,7 @@ import requests
 import numpy as np
 import base64
 
-from riotee.packet_model import PacketApiSend
+from riotee_gateway.packet_model import PacketApiSend
 
 
 def decode_dev_id(dev_id_b64: str):
@@ -13,7 +13,7 @@ def encode_data(data):
     return str(base64.b64encode(data), "utf-8")
 
 
-class GatewayConnection(object):
+class GatewayClient(object):
     def __init__(self, host: str = "localhost", port: int = 8000):
         self.__url = f"http://{host}:{port}"
 
