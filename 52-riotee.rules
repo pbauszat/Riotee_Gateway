@@ -1,0 +1,6 @@
+# Riotee Board
+ATTRS{idVendor}=="1209", ATTRS{idProduct}=="c8a0", MODE="660", GROUP="plugdev", TAG+="uaccess"
+# Riotee Probe
+ATTRS{idVendor}=="1209", ATTRS{idProduct}=="c8a1", MODE="660", GROUP="plugdev", TAG+="uaccess"
+# Riotee Gateway
+ATTRS{idVendor}=="1209", ATTRS{idProduct}=="c8a2", MODE="660", GROUP="plugdev", TAG+="uaccess"
