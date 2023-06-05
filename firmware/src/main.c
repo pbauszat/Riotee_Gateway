@@ -12,6 +12,7 @@
 #include <zephyr/usb/usbd.h>
 
 #include "radio.h"
+#include "message_buffer.h"
 
 #define RING_BUF_SIZE 2048
 #define PRINTER_STACK_SIZE 2048
@@ -215,6 +216,7 @@ void cdcacm_handler(void) {
       continue;
     }
     LOG_INF("Packet processed: %08X, %04X", pkt.hdr.dev_id, pkt.hdr.pkt_id);
+    msg_buf_insert(&pkt);
   }
 }
 
@@ -272,6 +274,7 @@ void main(void) {
 
   cdcacm_init();
 
+  msg_buf_init();
   radio_init();
   radio_start();
 

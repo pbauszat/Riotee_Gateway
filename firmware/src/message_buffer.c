@@ -1,29 +1,29 @@
 #include <zephyr/sys/ring_buffer.h>
+#include <zephyr/logging/log.h>
 #include <zephyr/device.h>
 
 #include "message_buffer.h"
 #include "radio.h"
 
+LOG_MODULE_REGISTER(message_buffer, LOG_LEVEL_INF);
+
 #define MAX_NUM_DEVICES 16
 #define PKTS_PER_BUF 16
 
 typedef struct {
-  /* ID of recipient for this message queue. This is set to own ID when slot is not used. */
+  bool in_use;
+  /* ID of recipient for this message queue. */
   uint32_t dev_id;
   struct ring_buf msg_buf;
   uint8_t msg_buf_data[PKTS_PER_BUF * sizeof(pkt_t)];
 } dev_msg_buf_t;
 
 dev_msg_buf_t buffers[MAX_NUM_DEVICES];
-static uint32_t my_dev_id;
-
-#define msg_buf_used(idx) (buffers[idx].dev_id != my_dev_id)
-#define msg_buf_set_unused(dev_msg_buf_ptr) dev_msg_buf_ptr->dev_id = my_dev_id
 
 /* Get pointer to the dev_msg_buf for the specified device ID */
 static inline dev_msg_buf_t *get_dev_msg_buf(uint32_t dev_id) {
   for (unsigned int buf_idx = 0; buf_idx < MAX_NUM_DEVICES; buf_idx++) {
-    if (dev_id == buffers[buf_idx].dev_id)
+    if (buffers[buf_idx].in_use && (dev_id == buffers[buf_idx].dev_id))
       return &buffers[buf_idx];
   }
   return NULL;
@@ -31,19 +31,16 @@ static inline dev_msg_buf_t *get_dev_msg_buf(uint32_t dev_id) {
 
 static inline dev_msg_buf_t *get_empty_msg_buf() {
   for (unsigned int buf_idx = 0; buf_idx < MAX_NUM_DEVICES; buf_idx++) {
-    if (!msg_buf_used(buf_idx))
+    if (!buffers[buf_idx].in_use)
       return &buffers[buf_idx];
   }
   return NULL;
 }
 
 int msg_buf_init(void) {
-  my_dev_id = NRF_FICR->DEVICEID[0];
-
   for (unsigned int i = 0; i < MAX_NUM_DEVICES; i++) {
     ring_buf_init(&buffers[i].msg_buf, PKTS_PER_BUF * sizeof(pkt_t), buffers[i].msg_buf_data);
-    /* Set to own ID to indicate that this slot is not used */
-    buffers[i].dev_id = my_dev_id;
+    buffers[i].in_use = false;
   }
   return 0;
 }
@@ -61,28 +58,32 @@ int msg_buf_insert(pkt_t *pkt) {
     dev_msg_buf->dev_id = pkt->hdr.dev_id;
   }
 
-  /* Insert own device ID as sender into the packet */
-  pkt->hdr.dev_id = my_dev_id;
-
+  LOG_DBG("Adding packet for 0x%08X to message buffer", dev_msg_buf->dev_id);
   ring_buf_put(&dev_msg_buf->msg_buf, (uint8_t *)pkt, sizeof(pkt_t));
+  dev_msg_buf->in_use = true;
+
   return 0;
 }
 
 /* This gets called from a critical section within the radio ISR and should run as quickly as possible */
 int msg_buf_get_claim(pkt_t **dst, uint32_t dev_id) {
   dev_msg_buf_t *dev_msg_buf;
+  size_t rb_size;
   if ((dev_msg_buf = get_dev_msg_buf(dev_id)) == NULL)
     /* No messages available for this device id*/
     return 1;
 
-  if (sizeof(pkt_t) != ring_buf_get_claim(&dev_msg_buf->msg_buf, (uint8_t **)dst, sizeof(pkt_t)))
+  if ((rb_size = ring_buf_get_claim(&dev_msg_buf->msg_buf, (uint8_t **)dst, sizeof(pkt_t))) != sizeof(pkt_t)) {
+    /* This shouldn't happen*/
     return -1;
+  }
 
   return 0;
 }
 
 int msg_buf_get_finish(uint32_t dev_id) {
   dev_msg_buf_t *dev_msg_buf;
+
   if ((dev_msg_buf = get_dev_msg_buf(dev_id)) == NULL)
     /* This should not happen, since we should have claimed before */
     return -1;
@@ -90,7 +91,8 @@ int msg_buf_get_finish(uint32_t dev_id) {
   ring_buf_get_finish(&dev_msg_buf->msg_buf, sizeof(pkt_t));
 
   if (ring_buf_is_empty(&dev_msg_buf->msg_buf))
-    msg_buf_set_unused(dev_msg_buf);
+    dev_msg_buf->in_use = false;
+  LOG_DBG("Retrieved packet for 0x%08X from message buffer", dev_msg_buf->dev_id);
 
   return 0;
 }

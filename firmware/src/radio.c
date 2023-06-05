@@ -150,6 +150,8 @@ static void radio_isr(void) {
 
     /* Insert Packet ID of received packet into acknowledgement */
     tx_pkt->hdr.ack_id = rx_pkt.hdr.pkt_id;
+    /* Insert destination ID into acknowledgement */
+    tx_pkt->hdr.dev_id = rx_pkt.hdr.dev_id;
 
     NRF_RADIO->PACKETPTR = (uint32_t)tx_pkt;
 
@@ -185,10 +187,10 @@ static void radio_handler() {
     memcpy(&tmp_buf, &rx_pkt, rx_pkt.len + 1);
 
     /* Wait until acknowledgement has been sent */
-    uint32_t events = k_event_wait(&radio_evt, RADIO_EVT_END, false, K_FOREVER);
+    k_event_wait(&radio_evt, RADIO_EVT_END, false, K_FOREVER);
 
     /* If the acknowledgement packet has been taken from the message buffer*/
-    if (events & RADIO_EVT_CLAIM)
+    if (radio_evt.events & RADIO_EVT_CLAIM)
       /* Tell the buffer that we're done with the packet */
       msg_buf_get_finish(tmp_buf.hdr.dev_id);
 
