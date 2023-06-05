@@ -2,9 +2,10 @@ name: West build firmware
 
 on:
   push:
+  workflow_call:
 
 jobs:
-  build:
+  build-firmware:
     runs-on: ubuntu-latest
     container:
       image: zephyrprojectrtos/ci:latest

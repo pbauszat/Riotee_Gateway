@@ -1,8 +1,8 @@
-
 name: Build Python package
 
 on:
   push:
+  workflow_call:
 
 jobs:
   build-host:
