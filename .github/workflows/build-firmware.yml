@@ -1,4 +1,4 @@
-name: West build
+name: West build firmware
 
 on:
   push:
