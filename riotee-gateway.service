@@ -1,0 +1,6 @@
+[Unit]
+Description=Riotee Gateway Server
+
+[Service]
+ExecStart=/usr/bin/riotee-gateway -vv -h 0.0.0.0 -p 8000 server
+Restart=no
