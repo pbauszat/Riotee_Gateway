@@ -15,8 +15,8 @@ A Python application running on a server communicates with the Dongle via USB.
 It stores messages received from the dongle in an internal database.
 The application exposes a REST API.
 
-A Client application running on a host (can be the same as the server) communicates with the server over HTTP.
-The client remotely fetches received messages and sends messages via the API.
+A client application running on a host (can be the same machine as the server) communicates with the server over HTTP.
+The client remotely fetches messages received by the gateway and sends messages to the gateway using the API.
 
 # Installation
 
@@ -42,13 +42,57 @@ riotee-gateway --help
 
 # Usage
 
+## Server
 Attach the nRF52840-Dongle to the server's USB port.
 On Linux, it may be necessary to install the udev rules provided in this repository to access the USB device with user privileges.
-To start the server run `riotee-gateway server`.
-This server should start listening on all interfaces and the default port 8000.
+To start the server run
+```
+riotee-gateway server
+```
+
+The server should start listening on all interfaces and the default port 8000.
+You can use the provided `riotee-gateway.service` as a starting point for setting up a permanent server.
+
+## Client
+
+The provided commandline interface offers an easy way to interact with the gateway:
 
 On the client machine, run the following command to list all devices from which the gateway has received messages since the start:
 ```
 riotee-gateway --host [SERVER] client
 ```
 Replace [SERVER] with the hostname or IP of the server. If it is the same machine, you can omit the `--host` parameter.
+
+To fetch all packets received from a specific device ID and store them in a file `received.txt` run
+```
+riotee-gateway client -d [DEVICE_ID] -o received.txt
+```
+
+To continuously poll the server for all packets received from any device and store them in a file `received.txt` run
+```
+riotee-gateway client monitor -o received.txt
+```
+
+For more advanced use cases, the client may also be used programatically by importing the corresponding class:
+
+```python
+from riotee_gateway import GatewayClient
+gc = GatewayClient(host=localhost, port=8000)
+
+for dev_id in gc.get_devices()
+    pkts = gc.get_packets(dev_id)
+    gc.delete_packets(dev_id)
+```
+
+# Data Format
+
+The data received from the gateway is json-formatted.
+The device address and the payload data are url-safe base64 encoded.
+The python package provides two convenience methods for decoding the corresponding data fields:
+
+```python
+from riotee_gateway import base64_to_numpy, base64_to_devid
+
+data_arr = base64_to_numpy(pkt.data, np.uint32)
+dev_id = base64_to_devid(pkt.dev_id)
+```

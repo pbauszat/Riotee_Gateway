@@ -2,7 +2,10 @@ import click
 import logging
 import uvicorn
 from riotee_gateway.client import GatewayClient
-
+import time
+import signal
+import sys
+import json
 
 @click.option("-v", "--verbose", count=True, default=2)
 @click.option("-p", "--port", type=int, default=8000, help="Port for API server")
@@ -40,20 +43,49 @@ def client(ctx):
 @click.option("-d", "--device", type=str, required=False)
 @click.pass_context
 def fetch(ctx, device):
-    click.echo("Fetching stuff")
+    for pkt in ctx.obj["client"].get_packets(device):
+        print(pkt)
+    ctx.obj["client"].delete_packets(device)
 
 
 @client.command(short_help="list visible devices")
 @click.pass_context
 def devices(ctx):
-    devices = ctx.obj["client"].get_devices()
+    for dev in ctx.obj["client"].get_devices():
+        print(dev)
 
 
 @client.command(short_help="send ascii message to device")
 @click.option("-d", "--device", type=str)
 @click.option("-m", "--message", type=str)
-def send(device, message):
-    click.echo(f"sending {message} to {device}")
+@click.pass_context
+def send(ctx, device, message):
+    ctx.obj["client"].send_ascii(device, message)
+
+@client.command(short_help="continuously poll the server for packets")
+@click.option("-d", "--device", type=str)
+@click.option("-i", "--interval", type=float, default=0.1)
+@click.option("-o", "--output", type=click.Path())
+@click.pass_context
+def monitor(ctx, device, interval, output):
+    if output:
+        f = open(output, "w+")
+    
+    stop_the_loop = False
+    def stop_loop(signum, frame):
+        if output:
+            f.close()
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, stop_loop)
+
+    while True:
+        for pkt in ctx.obj["client"].get_packets(device):
+            print(pkt)
+            if output:
+                f.writelines(json.dumps(pkt) + '\n')
+        ctx.obj["client"].delete_packets(device)
+        time.sleep(interval)
 
 
 if __name__ == "__main__":

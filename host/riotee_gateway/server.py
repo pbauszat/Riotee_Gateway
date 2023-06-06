@@ -18,11 +18,15 @@ class PacketDatabase(object):
         except KeyError:
             self.__db[pkt.dev_id] = [pkt]
 
+    def reset(self, dev_id):
+        self.__db[dev_id] = list()
+
     def get_devices(self):
         return list(self.__db.keys())
 
     def __getitem__(self, dev_id):
         return self.__db[dev_id]
+
 
 
 async def receive_loop(tcv: Transceiver, db: PacketDatabase):
@@ -58,7 +62,7 @@ async def get_all_queue_size():
 
 
 @app.get("/in/all/all")
-async def get_all_packets(dev_id: bytes):
+async def get_all_packets():
     pkts = list()
     for dev_id in db.get_devices():
         pkts += db[dev_id]
@@ -66,10 +70,10 @@ async def get_all_packets(dev_id: bytes):
 
 
 @app.delete("/in/all/all")
-async def delete_all_packets(dev_id: bytes):
+async def delete_all_packets():
     pkts = list()
     for dev_id in db.get_devices():
-        db[dev_id] = list()
+        db.reset(dev_id)
 
 
 @app.get("/in/{dev_id}/size")
@@ -84,7 +88,7 @@ async def get_all_dev_packets(dev_id: bytes):
 
 @app.delete("/in/{dev_id}/all")
 async def delete_all_devpackets(dev_id: bytes):
-    db[dev_id] = list()
+    db.reset(dev_id)
 
 
 @app.get("/in/{dev_id}/{index}")
