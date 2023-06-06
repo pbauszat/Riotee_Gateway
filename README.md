@@ -1,5 +1,8 @@
 # Riotee Gateway
 
+[![Python package build](https://github.com/NessieCircuits/Riotee_Gateway/actions/workflows/build-host.yml/badge.svg)](https://github.com/NessieCircuits/Riotee_Gateway/actions/workflows/build-host.yml)
+[![Firmware build](https://github.com/NessieCircuits/Riotee_Gateway/actions/workflows/build-firmware.yml/badge.svg)](https://github.com/NessieCircuits/Riotee_Gateway/actions/workflows/build-firmware.yml)
+
 The Riotee Gateway communicates with Riotee devices via a proprietary wireless protocol.
 The gateway forwards messages received from the devices to a client application and forwards messages from the client to the devices.
 The gateway consists of three components:
@@ -20,7 +23,7 @@ The client remotely fetches received messages and sends messages via the API.
 To setup a Riotee Gateway, you need an nRF52840-Dongle and a computer with a USB port.
 
 First, the firmware must be flashed on the Dongle.
-You can build the firmware yourself or download the [latest binary](todo).
+You can build the firmware yourself or download the [latest release](https://www.riotee.nessie-circuits.de/artifacts/gateway/latest/zephyr.hex).
 To flash the hex file follow the instructions under "Program application using nRF Connect Programmer" on [this page](https://devzone.nordicsemi.com/guides/short-range-guides/b/getting-started/posts/nrf52840-dongle-programming-tutorial).
 
 Next, install the Python application using your favorite package manager.
