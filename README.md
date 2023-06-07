@@ -7,7 +7,7 @@ The Riotee Gateway communicates with Riotee devices via a proprietary wireless p
 The gateway forwards messages received from the devices to a client application and forwards messages from the client to the devices.
 The gateway consists of three components:
 
-An nRF52840-Dongle listens for incoming messages from the Riotee devices using the built-in 2.4GHz radio.
+The firmware runs on the [nRF52840-Dongle](https://www.nordicsemi.com/Products/Development-hardware/nrf52840-dongle). It listens for incoming messages from the Riotee devices using the built-in 2.4GHz radio.
 A ZephyrOS-based firmware running on the Dongle dumps received messages to its USB port.
 It also accepts messages sent over USB and stores them in an internal buffer until they are sent to the corresponding Riotee device.
 
