@@ -20,7 +20,7 @@ The client remotely fetches messages received by the gateway and sends messages 
 
 # Installation
 
-To setup a Riotee Gateway, you need an nRF52840-Dongle and a computer with a USB port.
+To setup a Riotee Gateway, you need an nRF52840-Dongle and a computer with a USB port running **Python 3.10** or later.
 
 First, the firmware must be flashed on the Dongle.
 You can build the firmware yourself or download the [latest release](https://www.riotee.nessie-circuits.de/artifacts/gateway/latest/zephyr.hex).
