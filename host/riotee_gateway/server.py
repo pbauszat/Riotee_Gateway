@@ -37,8 +37,7 @@ async def receive_loop(tcv: Transceiver, db: PacketDatabase):
             f"Got packet from {pkt.dev_id} with ID {pkt.pkt_id} @{pkt.timestamp}"
         )
 
-
-tcv = Transceiver()
+tcv: Transceiver = None
 db = PacketDatabase()
 app = FastAPI()
 

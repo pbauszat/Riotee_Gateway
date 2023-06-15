@@ -2,6 +2,8 @@ import click
 import logging
 import uvicorn
 from riotee_gateway.client import GatewayClient
+import riotee_gateway.server
+from riotee_gateway import Transceiver
 import time
 import signal
 import sys
@@ -27,9 +29,16 @@ def cli(ctx, host, port, verbose):
 
 
 @cli.command(short_help="server stuff")
+@click.option(
+    "--device",
+    "-d",
+    type=click.Path(exists=True),
+    required=False,
+    help="Path to USB device",
+)
 @click.pass_context
-def server(ctx):
-    click.echo("Here to serve")
+def server(ctx, device):
+    riotee_gateway.server.tcv = Transceiver(port=device)
     uvicorn.run("riotee_gateway.server:app", port=ctx.obj["port"], host=ctx.obj["host"])
 
 
