@@ -47,7 +47,86 @@ enum {
 
 K_EVENT_DEFINE(radio_evt);
 
-static void radio_isr(void);
+ISR_DIRECT_DECLARE(radio_isr) {
+  if ((NRF_RADIO->EVENTS_TXREADY == 1) && (NRF_RADIO->INTENSET & RADIO_INTENSET_TXREADY_Msk)) {
+    NRF_RADIO->EVENTS_TXREADY = 0;
+
+    /* Set shorts for turning around to RX */
+    NRF_RADIO->SHORTS &= ~RADIO_SHORTS_DISABLED_TXEN_Msk;
+    NRF_RADIO->SHORTS |= RADIO_SHORTS_DISABLED_RXEN_Msk;
+
+    NRF_RADIO->INTENCLR = 0xFFFFFFFF;
+    NRF_RADIO->INTENSET = RADIO_INTENSET_END_Msk;
+  }
+  if ((NRF_RADIO->EVENTS_RXREADY == 1) && (NRF_RADIO->INTENSET & RADIO_INTENSET_RXREADY_Msk)) {
+    NRF_RADIO->EVENTS_RXREADY = 0;
+
+    /* Set shorts for turning around to TX to send acknowledgement */
+    NRF_RADIO->SHORTS &= ~RADIO_SHORTS_DISABLED_RXEN_Msk;
+    NRF_RADIO->SHORTS |= RADIO_SHORTS_DISABLED_TXEN_Msk;
+    NRF_RADIO->INTENCLR = 0xFFFFFFFF;
+    NRF_RADIO->INTENSET = RADIO_INTENSET_CRCOK_Msk | RADIO_INTENSET_CRCERROR_Msk;
+  }
+  /* Transmission of acknowledgement has finished */
+  if ((NRF_RADIO->EVENTS_END == 1) && (NRF_RADIO->INTENSET & RADIO_INTENSET_END_Msk)) {
+    NRF_RADIO->EVENTS_END = 0;
+
+    /* Prepare for listening again */
+    NRF_RADIO->PACKETPTR = (uint32_t)&rx_pkt;
+    NRF_RADIO->INTENCLR = 0xFFFFFFFF;
+    NRF_RADIO->INTENSET = RADIO_INTENSET_RXREADY_Msk;
+
+    /* Notify application that the acknowledgement has been sent */
+    k_event_post(&radio_evt, RADIO_EVT_END);
+    /* Ask the scheduler to do its job */
+    return 1;
+  }
+  /* Valid packet received */
+  if ((NRF_RADIO->EVENTS_CRCOK == 1) && (NRF_RADIO->INTENSET & RADIO_INTENSET_CRCOK_Msk)) {
+    NRF_RADIO->EVENTS_CRCOK = 0;
+
+    pkt_t* tx_pkt;
+    /* Get a packet that is to be sent to the device from which we just received something */
+    if (msg_buf_get_claim(&tx_pkt, rx_pkt.hdr.dev_id) == 0)
+      /* Let the application know that we have claimed a buffer */
+      k_event_post(&radio_evt, RADIO_EVT_CLAIM);
+    else {
+      /* If there is no packet pending, send an empty acknowledgement */
+      tx_pkt = &ack_only_pkt;
+      /* Acknowledgements always have the same device ID as the acknowledged packet */
+      tx_pkt->hdr.dev_id = rx_pkt.hdr.dev_id;
+    }
+
+    /* Insert Packet ID of received packet into acknowledgement */
+    tx_pkt->hdr.ack_id = rx_pkt.hdr.pkt_id;
+    /* Insert destination ID into acknowledgement */
+    tx_pkt->hdr.dev_id = rx_pkt.hdr.dev_id;
+
+    NRF_RADIO->PACKETPTR = (uint32_t)tx_pkt;
+
+    NRF_RADIO->INTENCLR = 0xFFFFFFFF;
+    NRF_RADIO->INTENSET = RADIO_INTENSET_TXREADY_Msk;
+
+    /* Notify application that it can pick up the received packet */
+    k_event_post(&radio_evt, RADIO_EVT_CRCOK);
+    /* Ask the scheduler to do its job */
+    return 1;
+  }
+  /* Bad CRC -> Abort transmission of Acknowledgement*/
+  if ((NRF_RADIO->EVENTS_CRCERROR == 1) && (NRF_RADIO->INTENSET & RADIO_INTENSET_CRCERROR_Msk)) {
+    NRF_RADIO->EVENTS_CRCERROR = 0;
+
+    /* Set shorts for turning around to RX */
+    NRF_RADIO->SHORTS &= ~RADIO_SHORTS_DISABLED_TXEN_Msk;
+    NRF_RADIO->SHORTS |= RADIO_SHORTS_DISABLED_RXEN_Msk;
+
+    /* Disable radio to start listening again */
+    NRF_RADIO->TASKS_DISABLE = 1;
+
+    NRF_RADIO->INTENCLR = 0xFFFFFFFF;
+    NRF_RADIO->INTENSET = RADIO_INTENSET_RXREADY_Msk;
+  }
+}
 
 int radio_init() {
   /* 0dBm TX power */
@@ -100,83 +179,6 @@ int radio_init() {
   return 0;
 }
 
-static void radio_isr(void) {
-  if ((NRF_RADIO->EVENTS_TXREADY == 1) && (NRF_RADIO->INTENSET & RADIO_INTENSET_TXREADY_Msk)) {
-    NRF_RADIO->EVENTS_TXREADY = 0;
-
-    /* Set shorts for turning around to RX */
-    NRF_RADIO->SHORTS &= ~RADIO_SHORTS_DISABLED_TXEN_Msk;
-    NRF_RADIO->SHORTS |= RADIO_SHORTS_DISABLED_RXEN_Msk;
-
-    NRF_RADIO->INTENCLR = 0xFFFFFFFF;
-    NRF_RADIO->INTENSET = RADIO_INTENSET_END_Msk;
-  }
-  if ((NRF_RADIO->EVENTS_RXREADY == 1) && (NRF_RADIO->INTENSET & RADIO_INTENSET_RXREADY_Msk)) {
-    NRF_RADIO->EVENTS_RXREADY = 0;
-
-    /* Set shorts for turning around to TX to send acknowledgement */
-    NRF_RADIO->SHORTS &= ~RADIO_SHORTS_DISABLED_RXEN_Msk;
-    NRF_RADIO->SHORTS |= RADIO_SHORTS_DISABLED_TXEN_Msk;
-    NRF_RADIO->INTENCLR = 0xFFFFFFFF;
-    NRF_RADIO->INTENSET = RADIO_INTENSET_CRCOK_Msk | RADIO_INTENSET_CRCERROR_Msk;
-  }
-  /* Transmission of acknowledgement has finished */
-  if ((NRF_RADIO->EVENTS_END == 1) && (NRF_RADIO->INTENSET & RADIO_INTENSET_END_Msk)) {
-    NRF_RADIO->EVENTS_END = 0;
-
-    /* Prepare for listening again */
-    NRF_RADIO->PACKETPTR = (uint32_t)&rx_pkt;
-    NRF_RADIO->INTENCLR = 0xFFFFFFFF;
-    NRF_RADIO->INTENSET = RADIO_INTENSET_RXREADY_Msk;
-
-    /* Notify application that it can pick up the received packet */
-    k_event_post(&radio_evt, RADIO_EVT_END);
-  }
-  /* Valid packet received */
-  if ((NRF_RADIO->EVENTS_CRCOK == 1) && (NRF_RADIO->INTENSET & RADIO_INTENSET_CRCOK_Msk)) {
-    NRF_RADIO->EVENTS_CRCOK = 0;
-
-    pkt_t* tx_pkt;
-    /* Get a packet that is to be sent to the device from which we just received something */
-    if (msg_buf_get_claim(&tx_pkt, rx_pkt.hdr.dev_id) == 0)
-      /* Let the application know that we have claimed a buffer */
-      k_event_post(&radio_evt, RADIO_EVT_CLAIM);
-    else {
-      /* If there is no packet pending, send an empty acknowledgement */
-      tx_pkt = &ack_only_pkt;
-      /* Acknowledgements always have the same device ID as the acknowledged packet */
-      tx_pkt->hdr.dev_id = rx_pkt.hdr.dev_id;
-    }
-
-    /* Insert Packet ID of received packet into acknowledgement */
-    tx_pkt->hdr.ack_id = rx_pkt.hdr.pkt_id;
-    /* Insert destination ID into acknowledgement */
-    tx_pkt->hdr.dev_id = rx_pkt.hdr.dev_id;
-
-    NRF_RADIO->PACKETPTR = (uint32_t)tx_pkt;
-
-    NRF_RADIO->INTENCLR = 0xFFFFFFFF;
-    NRF_RADIO->INTENSET = RADIO_INTENSET_TXREADY_Msk;
-
-    /* Notify application that it can pick up the received packet */
-    k_event_post(&radio_evt, RADIO_EVT_CRCOK);
-  }
-  /* Bad CRC -> Abort transmission of Acknowledgement*/
-  if ((NRF_RADIO->EVENTS_CRCERROR == 1) && (NRF_RADIO->INTENSET & RADIO_INTENSET_CRCERROR_Msk)) {
-    NRF_RADIO->EVENTS_CRCERROR = 0;
-
-    /* Set shorts for turning around to RX */
-    NRF_RADIO->SHORTS &= ~RADIO_SHORTS_DISABLED_TXEN_Msk;
-    NRF_RADIO->SHORTS |= RADIO_SHORTS_DISABLED_RXEN_Msk;
-
-    /* Disable radio to start listening again */
-    NRF_RADIO->TASKS_DISABLE = 1;
-
-    NRF_RADIO->INTENCLR = 0xFFFFFFFF;
-    NRF_RADIO->INTENSET = RADIO_INTENSET_RXREADY_Msk;
-  }
-}
-
 /* This thread processes the radio events to offload work from the ISR. */
 static void radio_handler() {
   pkt_t tmp_buf;
@@ -206,8 +208,9 @@ int radio_msgq_get(pkt_t* pkt, k_timeout_t timeout) {
 }
 
 int radio_start() {
+  /* Thread has high priority */
   k_thread_create(&radio_thread_data, radio_thread_stack, K_THREAD_STACK_SIZEOF(radio_thread_stack), radio_handler,
-                  NULL, NULL, NULL, 6, 0, K_NO_WAIT);
+                  NULL, NULL, NULL, 1, 0, K_NO_WAIT);
 
   /* If it's not running, start the HFCLCK */
   if ((NRF_CLOCK->HFCLKSTAT & (CLOCK_HFCLKSTAT_SRC_Xtal << CLOCK_HFCLKSTAT_SRC_Pos)) == 0) {
