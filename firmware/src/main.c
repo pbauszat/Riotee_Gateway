@@ -254,13 +254,12 @@ void printer_handler() {
     } else
       LOG_DBG("Ringbuf full. Dropping packet descriptor.");
 
-    LOG_DBG("[%08X:%04X:%04X(%u)]", pkt_buf.hdr.dev_id, pkt_buf.hdr.pkt_id, pkt_buf.hdr.ack_id, pkt_buf.len);
+    LOG_INF("[%08X:%04X:%04X(%u)]", pkt_buf.hdr.dev_id, pkt_buf.hdr.pkt_id, pkt_buf.hdr.ack_id, pkt_buf.len);
   }
 }
 
-void main(void) {
+void blinky_thread() {
   int ret;
-
   const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 
   if (!gpio_is_ready_dt(&led)) {
@@ -272,17 +271,22 @@ void main(void) {
     return;
   }
 
-  cdcacm_init();
-
-  msg_buf_init();
-  radio_init();
-  radio_start();
-
   while (1) {
     ret = gpio_pin_toggle_dt(&led);
     k_msleep(100);
   }
 }
 
-K_THREAD_DEFINE(printer, PRINTER_STACK_SIZE, printer_handler, NULL, NULL, NULL, 7, 0, 0);
-K_THREAD_DEFINE(cdcacm, CDCACM_STACK_SIZE, cdcacm_handler, NULL, NULL, NULL, 7, 0, 0);
+void main(void) {
+  cdcacm_init();
+
+  msg_buf_init();
+  radio_init();
+  radio_start();
+
+  return;
+}
+
+K_THREAD_DEFINE(printer, PRINTER_STACK_SIZE, printer_handler, NULL, NULL, NULL, 2, 0, 0);
+K_THREAD_DEFINE(cdcacm, CDCACM_STACK_SIZE, cdcacm_handler, NULL, NULL, NULL, 2, 0, 0);
+K_THREAD_DEFINE(blinky, CDCACM_STACK_SIZE, blinky_thread, NULL, NULL, NULL, 3, 0, 0);
