@@ -76,7 +76,7 @@ class PacketApiReceive(PacketBase):
     timestamp: datetime
 
     @staticmethod
-    def base64_extract(pkt_str: bytes):
+    def str_extract(pkt_str: bytes):
         """Extracts a null-terminated base64 string from pkt_str and converts it to utf-8."""
         term_idx = pkt_str.find(b"\0")
         if term_idx < 0:
@@ -86,7 +86,7 @@ class PacketApiReceive(PacketBase):
     @staticmethod
     def base64_to_bytes(pkt_str: bytes):
         """Extracts a null-terminated base64 string from pkt_str and converts it to utf-8."""
-        pkt_str_cut, term_idx = PacketApiReceive.base64_extract(pkt_str)
+        pkt_str_cut, term_idx = PacketApiReceive.str_extract(pkt_str)
         return base64.urlsafe_b64decode(pkt_str_cut), term_idx
 
     @staticmethod
@@ -98,7 +98,7 @@ class PacketApiReceive(PacketBase):
     @classmethod
     def from_uart(cls, pkt_str: str, timestamp: datetime):
         """Populates class from a pkt_str received from the gateway transceiver."""
-        dev_id, term_idx = cls.base64_extract(pkt_str)
+        dev_id, term_idx = cls.str_extract(pkt_str)
         pkt_str = pkt_str[term_idx + 1 :]
 
         pkt_id, term_idx = cls.base64_to_bin(pkt_str, np.uint16)
@@ -106,6 +106,6 @@ class PacketApiReceive(PacketBase):
 
         ack_id, term_idx = cls.base64_to_bin(pkt_str, np.uint16)
 
-        data = pkt_str[term_idx + 1 :]
+        data, _ = cls.str_extract(pkt_str[term_idx + 1 :])
 
         return cls(dev_id=dev_id, pkt_id=pkt_id, ack_id=ack_id, data=data, timestamp=timestamp)

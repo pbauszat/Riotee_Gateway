@@ -59,14 +59,15 @@ The provided commandline interface offers an easy way to interact with the gatew
 
 On the client machine, run the following command to list all devices from which the gateway has received messages since the start:
 ```
-riotee-gateway --host [SERVER] client devices
+riotee-gateway client --host [SERVER] devices
 ```
 Replace [SERVER] with the hostname or IP of the server. If it is the same machine, you can omit the `--host` parameter.
 
-To fetch all packets received from a specific device ID and store them in a file `received.txt` run
+To fetch all packets received from a specific device ID run
 ```
 riotee-gateway client fetch -d [DEVICE_ID]
 ```
+To store the received packets, add the `-o received.txt` option.
 
 To continuously poll the server for all packets received from any device and store them in a file `received.txt` run
 ```

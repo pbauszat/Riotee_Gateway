@@ -48,9 +48,9 @@ class Transceiver(object):
     async def read_packet(self):
         await self.__reader.readuntil(b"[")
         pkt_str = await self.__reader.readuntil(b"]")
+        pkt_str = pkt_str[:-1]
         return PacketApiReceive.from_uart(pkt_str, datetime.now())
 
     def send_packet(self, pkt: PacketTransceiverSend):
-        print(pkt.to_uart())
         self.__writer.write(pkt.to_uart())
         logging.debug(pkt.to_uart())
