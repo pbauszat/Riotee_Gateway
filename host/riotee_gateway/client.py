@@ -6,11 +6,11 @@ from riotee_gateway.packet_model import PacketApiSend
 
 
 def decode_dev_id(dev_id_b64: str):
-    return np.frombuffer(base64.b64decode(dev_id_b64), dtype=np.uint16)[0]
+    return np.frombuffer(base64.urlsafe_b64decode(dev_id_b64), dtype=np.uint16)[0]
 
 
 def encode_data(data):
-    return str(base64.b64encode(data), "utf-8")
+    return str(base64.urlsafe_b64encode(data), "utf-8")
 
 
 class GatewayClient(object):

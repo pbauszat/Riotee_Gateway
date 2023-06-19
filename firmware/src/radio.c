@@ -126,6 +126,7 @@ ISR_DIRECT_DECLARE(radio_isr) {
     NRF_RADIO->INTENCLR = 0xFFFFFFFF;
     NRF_RADIO->INTENSET = RADIO_INTENSET_RXREADY_Msk;
   }
+  return 0;
 }
 
 int radio_init() {

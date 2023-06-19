@@ -51,5 +51,6 @@ class Transceiver(object):
         return PacketApiReceive.from_uart(pkt_str, datetime.now())
 
     def send_packet(self, pkt: PacketTransceiverSend):
+        print(pkt.to_uart())
         self.__writer.write(pkt.to_uart())
         logging.debug(pkt.to_uart())

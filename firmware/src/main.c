@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <zephyr/device.h>
-#include <zephyr/sys/base64.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/kernel.h>
@@ -11,6 +10,7 @@
 #include <zephyr/usb/usb_device.h>
 #include <zephyr/usb/usbd.h>
 
+#include "base64.h"
 #include "radio.h"
 #include "message_buffer.h"
 
@@ -71,21 +71,21 @@ static void interrupt_handler(const struct device *dev, void *user_data) {
 }
 
 static int string2packet(pkt_t *dst, char *pkt_str, size_t pkt_str_len) {
-  size_t n_written;
+  int n_written;
   size_t n;
   char *s = pkt_str;
 
   if ((n = strlen(s)) != 8)
     return -1;
 
-  if (base64_decode((uint8_t *)&dst->hdr.dev_id, 4, &n_written, s, n) < 0)
+  if (base64_decode((uint8_t *)&dst->hdr.dev_id, 4, s, n) < 0)
     return -1;
 
   s += n + 1;
   if ((n = strlen(s)) != 4)
     return -1;
 
-  if (base64_decode((uint8_t *)&dst->hdr.pkt_id, 2, &n_written, s, n) < 0)
+  if (base64_decode((uint8_t *)&dst->hdr.pkt_id, 2, s, n) < 0)
     return -1;
 
   s += n + 1;
@@ -93,7 +93,7 @@ static int string2packet(pkt_t *dst, char *pkt_str, size_t pkt_str_len) {
     return -1;
   n = strlen(s);
 
-  if (base64_decode((uint8_t *)&dst->data, PKT_PAYLOAD_SIZE, &n_written, s, n) < 0)
+  if ((n_written = base64_decode((uint8_t *)&dst->data, PKT_PAYLOAD_SIZE, s, n)) < 0)
     return -1;
 
   dst->len = sizeof(pkt_header_t) + n_written;
@@ -101,23 +101,27 @@ static int string2packet(pkt_t *dst, char *pkt_str, size_t pkt_str_len) {
 }
 
 static int packet2string(char *dst, size_t dst_size, pkt_t *pkt) {
-  size_t olen;
+  int olen;
   int n_written = 0;
 
   dst[n_written++] = '[';
-  if (base64_encode(dst + n_written, dst_size, &olen, (uint8_t *)&pkt->hdr.dev_id, 4) < 0)
+  if ((olen = base64_encode(dst + n_written, dst_size, (uint8_t *)&pkt->hdr.dev_id, 4)) < 0)
     return -1;
+
   /* Make sure to also include the trailing \0 in the string as a delimiter*/
   n_written += olen + 1;
-  if (base64_encode(dst + n_written, dst_size - n_written, &olen, (uint8_t *)&pkt->hdr.pkt_id, 2) < 0)
+  if ((olen = base64_encode(dst + n_written, dst_size - n_written, (uint8_t *)&pkt->hdr.pkt_id, 2)) < 0)
     return -1;
+
   n_written += olen + 1;
-  if (base64_encode(dst + n_written, dst_size - n_written, &olen, (uint8_t *)&pkt->hdr.ack_id, 2) < 0)
+  if ((olen = base64_encode(dst + n_written, dst_size - n_written, (uint8_t *)&pkt->hdr.ack_id, 2)) < 0)
     return -1;
+
   n_written += olen + 1;
-  if (base64_encode(dst + n_written, dst_size - n_written, &olen, (uint8_t *)&pkt->data,
-                    pkt->len - sizeof(pkt_header_t)) < 0)
+  if ((olen = base64_encode(dst + n_written, dst_size - n_written, (uint8_t *)&pkt->data,
+                            pkt->len - sizeof(pkt_header_t))) < 0)
     return -1;
+
   n_written += olen + 1;
   dst[n_written++] = ']';
   return n_written;
@@ -215,7 +219,7 @@ void cdcacm_handler(void) {
       LOG_ERR("Error processing packet: %d", rc);
       continue;
     }
-    LOG_INF("Packet processed: %08X, %04X", pkt.hdr.dev_id, pkt.hdr.pkt_id);
+    LOG_DBG("Packet processed: %08X, %04X", pkt.hdr.dev_id, pkt.hdr.pkt_id);
     msg_buf_insert(&pkt);
   }
 }

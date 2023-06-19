@@ -38,7 +38,7 @@ class PacketApiSend(PacketBase):
     """Packet sent to the Gateway server via API to be forwarded to a device."""
 
     @classmethod
-    def from_binary(cls, data: bytes, pkt_id: int = None):
+    def from_binary(cls, data: bytes, pkt_id: np.int16 = None):
         data_enc = base64.urlsafe_b64encode(data)
         return cls(data=data_enc, pkt_id=pkt_id)
 
@@ -61,11 +61,9 @@ class PacketTransceiverSend(PacketBase):
 
     def to_uart(self):
         """Returns a string ready to be sent to the gateway transceiver."""
-        dev_id_bytes = base64.urlsafe_b64decode(self.dev_id)
-        dev_id_enc = str(base64.b64encode(dev_id_bytes), "utf-8")
-        pkt_id_enc = str(base64.b64encode(np.uint16(self.pkt_id)), "utf-8")
-        data_bytes = base64.urlsafe_b64decode(self.data)
-        data_enc = str(base64.b64encode(data_bytes), "utf-8")
+        dev_id_enc = str(self.dev_id, "utf-8")
+        data_enc = str(self.data, "utf-8")
+        pkt_id_enc = str(base64.urlsafe_b64encode(np.uint16(self.pkt_id)), "utf-8")
         return bytes(f"[{dev_id_enc}\0{pkt_id_enc}\0{data_enc}\0]", encoding="utf-8")
 
 
@@ -78,12 +76,18 @@ class PacketApiReceive(PacketBase):
     timestamp: datetime
 
     @staticmethod
-    def base64_to_bytes(pkt_str: bytes):
+    def base64_extract(pkt_str: bytes):
         """Extracts a null-terminated base64 string from pkt_str and converts it to utf-8."""
         term_idx = pkt_str.find(b"\0")
         if term_idx < 0:
             raise Exception("Could not find terminating character")
-        return base64.b64decode(pkt_str[:term_idx], validate=True), term_idx
+        return pkt_str[:term_idx], term_idx
+
+    @staticmethod
+    def base64_to_bytes(pkt_str: bytes):
+        """Extracts a null-terminated base64 string from pkt_str and converts it to utf-8."""
+        pkt_str_cut, term_idx = PacketApiReceive.base64_extract(pkt_str)
+        return base64.urlsafe_b64decode(pkt_str_cut), term_idx
 
     @staticmethod
     def base64_to_bin(pkt_str: bytes, dtype):
@@ -94,9 +98,7 @@ class PacketApiReceive(PacketBase):
     @classmethod
     def from_uart(cls, pkt_str: str, timestamp: datetime):
         """Populates class from a pkt_str received from the gateway transceiver."""
-        # Re-encode as URL safe base64
-        dev_id, term_idx = cls.base64_to_bytes(pkt_str)
-        dev_id = base64.urlsafe_b64encode(dev_id)
+        dev_id, term_idx = cls.base64_extract(pkt_str)
         pkt_str = pkt_str[term_idx + 1 :]
 
         pkt_id, term_idx = cls.base64_to_bin(pkt_str, np.uint16)
@@ -104,10 +106,6 @@ class PacketApiReceive(PacketBase):
 
         ack_id, term_idx = cls.base64_to_bin(pkt_str, np.uint16)
 
-        pkt_str = pkt_str[term_idx + 1 :]
-
-        # Re-encode as URL safe base64
-        data, _ = cls.base64_to_bytes(pkt_str)
-        data = base64.urlsafe_b64encode(data)
+        data = pkt_str[term_idx + 1 :]
 
         return cls(dev_id=dev_id, pkt_id=pkt_id, ack_id=ack_id, data=data, timestamp=timestamp)
