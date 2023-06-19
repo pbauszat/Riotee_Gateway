@@ -1,6 +1,6 @@
 """Riotee Gateway Python package"""
 
-__version__ = "0.0.7"
+__version__ = "0.0.8"
 
 import base64
 import numpy as np
