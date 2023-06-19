@@ -67,7 +67,7 @@ To fetch all packets received from a specific device ID run
 ```
 riotee-gateway client fetch -d [DEVICE_ID]
 ```
-To store the received packets, add the `-o received.txt` option.
+To store the received packets in a file, add the `-o received.txt` option.
 
 To continuously poll the server for all packets received from any device and store them in a file `received.txt` run
 ```
