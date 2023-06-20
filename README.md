@@ -2,6 +2,7 @@
 
 [![Python package build](https://github.com/NessieCircuits/Riotee_Gateway/actions/workflows/build-host.yml/badge.svg)](https://github.com/NessieCircuits/Riotee_Gateway/actions/workflows/build-host.yml)
 [![Firmware build](https://github.com/NessieCircuits/Riotee_Gateway/actions/workflows/build-firmware.yml/badge.svg)](https://github.com/NessieCircuits/Riotee_Gateway/actions/workflows/build-firmware.yml)
+[![PyPiVersion](https://img.shields.io/pypi/v/riotee_gateway.svg)](https://pypi.org/project/riotee_gateway)
 
 The Riotee Gateway communicates with Riotee devices via a proprietary wireless protocol.
 The gateway forwards messages received from the devices to a client application and forwards messages from the client to the devices.
