@@ -54,6 +54,10 @@ riotee-gateway server
 The server should start listening on all interfaces and the default port 8000.
 You can use the provided `riotee-gateway.service` as a starting point for setting up a permanent server.
 
+## Device
+
+To test the server, flash the [stella example](https://github.com/NessieCircuits/Riotee_Runtime/tree/main/examples/stella) from the SDK on a Riotee device.
+
 ## Client
 
 The provided commandline interface offers an easy way to interact with the gateway:
