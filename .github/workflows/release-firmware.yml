@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*.*.*'
 
+permissions:
+  contents: write
+
 jobs:
   call-build:
     uses: ./.github/workflows/build-firmware.yml
@@ -12,19 +15,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: call-build
     steps:
-      - run: mkdir output
 
       - uses: actions/download-artifact@v3
         with:
           name: riotee_gateway_binary
-          path: output/
 
-      - name: Upload artifacts to webserver
-        uses: SamKirkland/FTP-Deploy-Action@4.3.3
+      - run: mv zephyr.hex riotee_gateway_fw${{github.ref_name}}.hex
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
         with:
-          server: www.riotee.nessie-circuits.de
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: output/
-          server-dir: /htdocs/riotee/artifacts/gateway/latest/
-          protocol: ftps
+          files: riotee_gateway_fw${{github.ref_name}}.hex

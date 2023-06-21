@@ -56,7 +56,7 @@ You can use the provided `riotee-gateway.service` as a starting point for settin
 
 ## Device
 
-To test the server, flash the [stella example](https://github.com/NessieCircuits/Riotee_Runtime/tree/main/examples/stella) from the SDK on a Riotee device.
+To test the gateway, flash the [stella example](https://github.com/NessieCircuits/Riotee_Runtime/tree/main/examples/stella) from the SDK on a Riotee device. While harvesting sufficient energy, the device will transmit packets at regular intervals that should be received by the gateway.
 
 ## Client
 
