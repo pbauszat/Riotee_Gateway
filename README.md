@@ -86,7 +86,7 @@ For more advanced use cases, the client may also be used programatically by impo
 from riotee_gateway import GatewayClient
 gc = GatewayClient(host=localhost, port=8000)
 
-for dev_id in gc.get_devices()
+for dev_id in gc.get_devices():
     pkts = gc.get_packets(dev_id)
     gc.delete_packets(dev_id)
 ```
