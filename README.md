@@ -5,6 +5,7 @@
 [![PyPiVersion](https://img.shields.io/pypi/v/riotee_gateway.svg)](https://pypi.org/project/riotee_gateway)
 
 The Riotee Gateway communicates with Riotee devices via a proprietary wireless protocol.
+Riotee device refers to any battery-free device built around the Riotee Module.
 The gateway forwards messages received from the devices to a client application and forwards messages from the client to the devices.
 The gateway consists of three components:
 
