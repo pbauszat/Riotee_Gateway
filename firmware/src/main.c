@@ -160,15 +160,6 @@ int cdcacm_init(void) {
   const struct device *dev;
   uint32_t dtr;
 
-  int ret;
-
-  ret = usb_enable(NULL);
-
-  if (ret != 0) {
-    LOG_ERR("Failed to enable USB");
-    return -1;
-  }
-
   dev = DEVICE_DT_GET_ONE(zephyr_cdc_acm_uart);
   if (!device_is_ready(dev)) {
     LOG_ERR("CDC ACM device not ready");
