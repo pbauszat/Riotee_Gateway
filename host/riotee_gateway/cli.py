@@ -56,21 +56,20 @@ def fetch(ctx, device, output):
     if output:
         f = open(output, "w+")
 
-    for pkt in ctx.obj["client"].get_packets(device):
-        print(pkt)
+    for pkt in ctx.obj["client"].pops(device):
+        click.echo(pkt.to_json())
         if output:
-            f.writelines(json.dumps(pkt) + "\n")
+            f.writelines(json.dumps(pkt.to_json()) + "\n")
 
     if output:
         f.close()
-    ctx.obj["client"].delete_packets(device)
 
 
 @client.command(short_help="list visible devices")
 @click.pass_context
 def devices(ctx):
     for dev in ctx.obj["client"].get_devices():
-        print(dev)
+        click.echo(dev)
 
 
 @client.command(short_help="send ascii message to device")
@@ -98,11 +97,11 @@ def monitor(ctx, device, interval, output):
     signal.signal(signal.SIGINT, stop_loop)
 
     while True:
-        for pkt in ctx.obj["client"].get_packets(device):
-            print(pkt)
+        for pkt in ctx.obj["client"].pops(device):
+            click.echo(pkt.to_json())
             if output:
-                f.writelines(json.dumps(pkt) + "\n")
-        ctx.obj["client"].delete_packets(device)
+                f.writelines(json.dumps(pkt.to_json()) + "\n")
+
         time.sleep(interval)
 
 

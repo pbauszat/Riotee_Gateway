@@ -109,3 +109,20 @@ class PacketApiReceive(PacketBase):
         data, _ = cls.str_extract(pkt_str[term_idx + 1 :])
 
         return cls(dev_id=dev_id, pkt_id=pkt_id, ack_id=ack_id, data=data, timestamp=timestamp)
+
+    @classmethod
+    def from_json(cls, json_dict: dict):
+        return cls(
+            dev_id=json_dict["dev_id"],
+            pkt_id=json_dict["pkt_id"],
+            ack_id=json_dict["ack_id"],
+            data=json_dict["data"],
+            timestamp=json_dict["timestamp"],
+        )
+
+    def to_json(self):
+        json_dict = {"ack_id": self.ack_id, "pkt_id": self.pkt_id}
+        json_dict["dev_id"] = str(self.dev_id, encoding="utf-8")
+        json_dict["data"] = str(self.data, encoding="utf-8")
+        json_dict["timestamp"] = str(self.timestamp)
+        return json_dict

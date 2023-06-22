@@ -81,6 +81,7 @@ async def get_queue_size(dev_id: bytes):
     except KeyError:
         raise HTTPException(status_code=404, detail="Device not found")
 
+
 @app.get("/in/{dev_id}/all")
 async def get_all_dev_packets(dev_id: bytes):
     try:
@@ -88,12 +89,14 @@ async def get_all_dev_packets(dev_id: bytes):
     except KeyError:
         raise HTTPException(status_code=404, detail="Device not found")
 
+
 @app.delete("/in/{dev_id}/all")
 async def delete_all_devpackets(dev_id: bytes):
     try:
         db.reset(dev_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="Device not found")
+
 
 @app.get("/in/{dev_id}/{index}")
 async def get_packet(dev_id: bytes, index: int):
@@ -113,6 +116,7 @@ async def delete_packet(dev_id: bytes, index: int):
         raise HTTPException(status_code=404, detail="Item not found")
     except IndexError:
         raise HTTPException(status_code=404, detail="Packet not found")
+
 
 @app.post("/out/{dev_id}")
 async def post_packet(dev_id: bytes, packet: PacketApiSend):
