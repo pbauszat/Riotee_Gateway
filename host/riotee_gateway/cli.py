@@ -49,7 +49,7 @@ def client(ctx, host, port):
 
 
 @client.command(short_help="fetch packets from the server")
-@click.option("-d", "--device", type=str, required=False)
+@click.option("-d", "--device", type=str, required=True)
 @click.option("-o", "--output", type=click.Path())
 @click.pass_context
 def fetch(ctx, device, output):
@@ -81,7 +81,7 @@ def send(ctx, device, message):
 
 
 @client.command(short_help="continuously poll the server for packets")
-@click.option("-d", "--device", type=str)
+@click.option("-d", "--device", type=str, required=True)
 @click.option("-i", "--interval", type=float, default=0.1)
 @click.option("-o", "--output", type=click.Path())
 @click.pass_context

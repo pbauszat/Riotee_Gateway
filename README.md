@@ -77,7 +77,7 @@ To store the received packets in a file, add the `-o received.txt` option.
 
 To continuously poll the server for all packets received from any device and store them in a file `received.txt` run
 ```
-riotee-gateway client monitor -o received.txt
+riotee-gateway client monitor -d [DEVICE_ID] -o received.txt
 ```
 
 For more advanced use cases, the client may also be used programatically by importing the corresponding class:
