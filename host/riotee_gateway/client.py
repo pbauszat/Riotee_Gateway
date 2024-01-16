@@ -11,9 +11,8 @@ def decode_dev_id(dev_id_b64: str):
     return np.frombuffer(base64.urlsafe_b64decode(dev_id_b64), dtype=np.uint16)[0]
 
 
-def encode_data(data):
-    return str(base64.urlsafe_b64encode(data), "utf-8")
-
+def encode_data(data: bytes) -> bytes:
+    return base64.urlsafe_b64encode(data)
 
 class GatewayClient(object):
     def __init__(self, host: str = "localhost", port: int = 8000):

@@ -8,7 +8,7 @@ import base64
 
 class PacketBase(BaseModel):
     data: bytes
-    pkt_id: int | None
+    pkt_id: int = None
 
     @validator("data", check_fields=False)
     def is_data_base64(cls, val):
