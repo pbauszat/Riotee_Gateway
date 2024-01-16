@@ -127,7 +127,7 @@ async def post_packet(dev_id: bytes, packet: PacketApiSend):
 
 @app.on_event("startup")
 async def startup_event():
-    await tcv.__enter__()
+    await tcv.__aenter__()
     asyncio.create_task(receive_loop(tcv, db))
 
 

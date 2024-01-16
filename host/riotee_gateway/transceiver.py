@@ -33,7 +33,7 @@ class Transceiver(object):
         self.__port = port
         self.__baudrate = baudrate
 
-    async def __enter__(self):
+    async def __aenter__(self):
         if self.__port is None:
             self.__port = Transceiver.find_serial_port()
 
@@ -42,7 +42,7 @@ class Transceiver(object):
         )
         return self
 
-    def __exit__(self, *args):
+    async def __aexit__(self, *args):
         pass
 
     async def read_packet(self):
