@@ -20,3 +20,8 @@ def base64_to_numpy(data_b64: bytes, dtype=np.uint8):
 
 def base64_to_devid(dev_id_b64: bytes) -> int:
     return int(base64_to_numpy(dev_id_b64, np.uint32))
+
+
+def base64_to_str(data_b64: bytes):
+    data_bin = base64.urlsafe_b64decode(data_b64)
+    return str(data_bin)
