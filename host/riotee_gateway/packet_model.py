@@ -8,7 +8,7 @@ import base64
 
 class PacketBase(BaseModel):
     data: bytes
-    pkt_id: int = None
+    pkt_id: int
 
     @validator("data", check_fields=False)
     def is_data_base64(cls, val):
@@ -24,8 +24,15 @@ class PacketBase(BaseModel):
             raise ValueError("device id has wrong size")
         return val
 
-    @validator("pkt_id", "ack_id", check_fields=False)
-    def is_uint16(cls, val):
+    @validator("pkt_id", check_fields=False)
+    def pkt_id_is_uint16(cls, val):
+        if val < 0 or val >= 2**16:
+            raise ValueError("outside range for uint16")
+        else:
+            return val
+
+    @validator("ack_id", check_fields=False)
+    def ack_id_is_uint16(cls, val):
         if val is None:
             return val
         if val < 0 or val >= 2**16:
@@ -47,17 +54,10 @@ class PacketTransceiverSend(PacketBase):
     """Packet sent to the transceiver via USB CDC ACM."""
 
     dev_id: bytes
-    pkt_id: int
 
     @classmethod
     def from_PacketApiSend(cls, pkt: PacketApiSend, dev_id: bytes):
-        # assign a random packet ID if none is specified
-        if pkt.pkt_id is None:
-            pkt_id = np.random.randint(0, 2**16)
-        else:
-            pkt_id = pkt.pkt_id
-
-        return cls(pkt_id=pkt_id, data=pkt.data, dev_id=dev_id)
+        return cls(pkt_id=pkt.pkt_id, data=pkt.data, dev_id=dev_id)
 
     def to_uart(self):
         """Returns a string ready to be sent to the gateway transceiver."""

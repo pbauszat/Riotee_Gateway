@@ -14,6 +14,7 @@ def decode_dev_id(dev_id_b64: str):
 def encode_data(data: bytes) -> bytes:
     return base64.urlsafe_b64encode(data)
 
+
 class GatewayClient(object):
     def __init__(self, host: str = "localhost", port: int = 8000):
         self.__url = f"http://{host}:{port}"
@@ -39,12 +40,14 @@ class GatewayClient(object):
 
     @convert_dev_id
     def send_packet(self, dev_id: int | str, pkt: PacketApiSend):
-        r = requests.post(f"{self.__url}/out/{dev_id}", data=pkt.json())
+        r = requests.post(f"{self.__url}/out/{dev_id}", data=pkt.model_dump_json())
         r.raise_for_status()
 
     @convert_dev_id
-    def send_ascii(self, dev_id: int | str, text: str):
-        pkt = PacketApiSend(data=encode_data(bytes(text, encoding="utf-8")))
+    def send_ascii(self, dev_id: int | str, text: str, pkt_id: int = None):
+        if pkt_id is None:
+            pkt_id = np.random.randint(0, 2**16)
+        pkt = PacketApiSend(data=encode_data(bytes(text, encoding="utf-8")), pkt_id=pkt_id)
         self.send_packet(dev_id, pkt)
 
     @convert_dev_id
