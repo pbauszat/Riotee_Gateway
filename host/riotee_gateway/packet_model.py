@@ -74,6 +74,7 @@ class PacketApiReceive(PacketBase):
     pkt_id: int
     ack_id: int
     timestamp: datetime
+    dongle_timestamp: int  # np.uint64
 
     @staticmethod
     def str_extract(pkt_str: bytes):
@@ -105,10 +106,14 @@ class PacketApiReceive(PacketBase):
         pkt_str = pkt_str[term_idx + 1 :]
 
         ack_id, term_idx = cls.base64_to_bin(pkt_str, np.uint16)
+        pkt_str = pkt_str[term_idx + 1 :]
 
-        data, _ = cls.str_extract(pkt_str[term_idx + 1 :])
+        dongle_timestamp, term_idx = cls.base64_to_bin(pkt_str, np.uint64)
+        pkt_str = pkt_str[term_idx + 1 :]
 
-        return cls(dev_id=dev_id, pkt_id=pkt_id, ack_id=ack_id, data=data, timestamp=timestamp)
+        data, _ = cls.str_extract(pkt_str)
+
+        return cls(dev_id=dev_id, pkt_id=pkt_id, ack_id=ack_id, data=data, timestamp=timestamp, dongle_timestamp=dongle_timestamp)
 
     @classmethod
     def from_json(cls, json_dict: dict):

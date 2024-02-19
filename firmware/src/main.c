@@ -104,6 +104,8 @@ static int packet2string(char *dst, size_t dst_size, pkt_t *pkt) {
   int olen;
   int n_written = 0;
 
+  int64_t timestamp = k_uptime_get();
+
   dst[n_written++] = '[';
   if ((olen = base64_encode(dst + n_written, dst_size, (uint8_t *)&pkt->hdr.dev_id, 4)) < 0)
     return -1;
@@ -115,6 +117,10 @@ static int packet2string(char *dst, size_t dst_size, pkt_t *pkt) {
 
   n_written += olen + 1;
   if ((olen = base64_encode(dst + n_written, dst_size - n_written, (uint8_t *)&pkt->hdr.ack_id, 2)) < 0)
+    return -1;
+
+  n_written += olen + 1;
+  if ((olen = base64_encode(dst + n_written, dst_size - n_written, (uint8_t *)&timestamp, 8)) < 0)
     return -1;
 
   n_written += olen + 1;
@@ -268,18 +274,18 @@ void blinky_thread() {
 
   while (1) {
     ret = gpio_pin_toggle_dt(&led);
-    k_msleep(100);
+    k_msleep(1000);
   }
 }
 
-void main(void) {
+int main(void) {
   cdcacm_init();
 
   msg_buf_init();
   radio_init();
   radio_start();
 
-  return;
+  return 0;
 }
 
 K_THREAD_DEFINE(printer, PRINTER_STACK_SIZE, printer_handler, NULL, NULL, NULL, 2, 0, 0);
