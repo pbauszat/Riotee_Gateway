@@ -25,7 +25,7 @@ The client remotely fetches messages received by the gateway and sends messages 
 To setup a Riotee Gateway, you need an nRF52840-Dongle and a computer with a USB port running **Python 3.10** or later.
 
 First, the firmware must be flashed on the Dongle.
-You can build the firmware yourself or download the [latest release](https://www.riotee.nessie-circuits.de/artifacts/gateway/latest/zephyr.hex).
+You can build the firmware yourself or download the [latest release](https://github.com/NessieCircuits/Riotee_Gateway/releases/latest).
 To flash the hex file follow the instructions under "Program application using nRF Connect Programmer" on [this page](https://devzone.nordicsemi.com/guides/short-range-guides/b/getting-started/posts/nrf52840-dongle-programming-tutorial).
 
 Next, install the Python application using your favorite package manager.
@@ -57,7 +57,7 @@ You can use the provided `riotee-gateway.service` as a starting point for settin
 
 ## Device
 
-To test the gateway, flash the [stella example](https://github.com/NessieCircuits/Riotee_Runtime/tree/main/examples/stella) from the SDK on a Riotee device. While harvesting sufficient energy, the device will transmit packets at regular intervals that should be received by the gateway.
+To test the gateway, flash the [stella example](https://github.com/NessieCircuits/Riotee_SDK/tree/main/examples/stella) from the SDK on a Riotee device. While harvesting sufficient energy, the device will transmit packets at regular intervals that should be received by the gateway.
 
 ## Client
 
